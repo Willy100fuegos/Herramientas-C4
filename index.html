@@ -8,7 +8,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .hero-gradient { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
-        .glass-card { background: #161b2a; border: 1px solid #1e293b; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
+        /* Altura del 100% para uniformidad */
+        .glass-card { background: #161b2a; border: 1px solid #1e293b; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; display: flex; flex-direction: column; height: 100%; }
         .glass-card:hover { transform: translateY(-5px); border-color: #3b82f6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); }
         .logo-pixmedia { width: 180px; height: auto; object-fit: contain; }
         
@@ -19,7 +20,7 @@
         .badge-bi { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
 
         /* Efecto Imagen */
-        .img-overlay { position: relative; aspect-ratio: 16/9; overflow: hidden; cursor: zoom-in; }
+        .img-overlay { position: relative; aspect-ratio: 16/9; overflow: hidden; cursor: zoom-in; flex-shrink: 0; }
         .img-overlay img { width: 100%; height: 100%; object-fit: cover; object-position: top; transition: transform 0.5s ease; }
         .glass-card:hover .img-overlay img { transform: scale(1.05); }
         .overlay-icon { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
@@ -53,53 +54,59 @@
         
         <div class="mb-12">
             <h2 class="text-2xl font-bold text-white mb-6 flex items-center"><i class="fas fa-bell text-red-500 mr-3"></i> Gestión de Alertas (SOAR)</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('http://imgfz.com/i/P2GsKqo.png', 'Panel de Alertas en Tiempo Real')">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr"> <article class="glass-card rounded-xl group" onclick="openModal('http://imgfz.com/i/P2GsKqo.png', 'Panel de Alertas en Tiempo Real')">
                     <div class="img-overlay">
                         <img src="http://imgfz.com/i/P2GsKqo.png" alt="Panel Realtime">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <span class="badge badge-realtime mb-2 inline-block">Firebase Live</span>
-                        <h3 class="text-lg font-bold text-white">Monitor de Alertas</h3>
-                        <p class="text-sm text-slate-400 mt-2">Recepción de eventos críticos (SOS, Geocercas) con alerta auditiva instantánea.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-realtime mb-2 inline-block">Firebase Live</span>
+                            <h3 class="text-lg font-bold text-white">Monitor de Alertas</h3>
+                            <p class="text-sm text-slate-400 mt-2">Recepción de eventos críticos (SOS, Geocercas) con alerta auditiva instantánea.</p>
+                        </div>
                     </div>
                 </article>
 
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('https://imgfz.com/i/CJRKrMg.png', 'Historial de Gestión')">
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/CJRKrMg.png', 'Historial de Gestión')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/CJRKrMg.png" alt="Historial">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <span class="badge badge-api mb-2 inline-block">Auditoría</span>
-                        <h3 class="text-lg font-bold text-white">Bitácora de Gestión</h3>
-                        <p class="text-sm text-slate-400 mt-2">Log detallado de alertas atendidas, clasificadas por motivo y operador.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-api mb-2 inline-block">Auditoría</span>
+                            <h3 class="text-lg font-bold text-white">Bitácora de Gestión</h3>
+                            <p class="text-sm text-slate-400 mt-2">Log detallado de alertas atendidas, clasificadas por motivo y operador.</p>
+                        </div>
                     </div>
                 </article>
 
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('https://imgfz.com/i/NBw9sOq.png', 'Tarjeta de Evidencia WhatsApp')">
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/NBw9sOq.png', 'Tarjeta de Evidencia WhatsApp')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/NBw9sOq.png" alt="Share Card">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <span class="badge badge-bi mb-2 inline-block">Evidencia Digital</span>
-                        <h3 class="text-lg font-bold text-white">Tarjeta Táctica</h3>
-                        <p class="text-sm text-slate-400 mt-2">Generación automática de resúmenes visuales para compartir incidencias vía WhatsApp.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-bi mb-2 inline-block">Evidencia Digital</span>
+                            <h3 class="text-lg font-bold text-white">Tarjeta Táctica</h3>
+                            <p class="text-sm text-slate-400 mt-2">Generación automática de resúmenes visuales para compartir incidencias vía WhatsApp.</p>
+                        </div>
                     </div>
                 </article>
 
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('http://imgfz.com/i/3Le2akH.png', 'Analítica de Incidentes')">
+                <article class="glass-card rounded-xl group" onclick="openModal('http://imgfz.com/i/3Le2akH.png', 'Analítica de Incidentes')">
                     <div class="img-overlay">
                         <img src="http://imgfz.com/i/3Le2akH.png" alt="Gráficas">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <span class="badge badge-bi mb-2 inline-block">Analytics</span>
-                        <h3 class="text-lg font-bold text-white">Métricas de Riesgo</h3>
-                        <p class="text-sm text-slate-400 mt-2">Visualización estadística de tipos de alertas y motivos frecuentes.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-bi mb-2 inline-block">Analytics</span>
+                            <h3 class="text-lg font-bold text-white">Métricas de Riesgo</h3>
+                            <p class="text-sm text-slate-400 mt-2">Visualización estadística de tipos de alertas y motivos frecuentes.</p>
+                        </div>
                     </div>
                 </article>
             </div>
@@ -107,29 +114,33 @@
 
         <div class="mb-12">
             <h2 class="text-2xl font-bold text-white mb-6 flex items-center"><i class="fas fa-network-wired text-blue-500 mr-3"></i> Interoperabilidad (Espejos)</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr">
                 
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('https://imgfz.com/i/wX72QVa.png', 'Generador de Links Espejo')">
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/wX72QVa.png', 'Generador de Links Espejo')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/wX72QVa.png" alt="API Mirror">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <span class="badge badge-api mb-2 inline-block">API Proxy</span>
-                        <h3 class="text-lg font-bold text-white">Generador On-Demand</h3>
-                        <p class="text-sm text-slate-400 mt-2">Interfaz para seleccionar unidades de múltiples clientes y crear enlaces temporales.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-api mb-2 inline-block">API Proxy</span>
+                            <h3 class="text-lg font-bold text-white">Generador On-Demand</h3>
+                            <p class="text-sm text-slate-400 mt-2">Interfaz para seleccionar unidades de múltiples clientes y crear enlaces temporales.</p>
+                        </div>
                     </div>
                 </article>
 
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('https://imgfz.com/i/O4kpKdh.png', 'Visor de Mapa Espejo')">
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/O4kpKdh.png', 'Visor de Mapa Espejo')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/O4kpKdh.png" alt="Map View">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <span class="badge badge-realtime mb-2 inline-block">Leaflet JS</span>
-                        <h3 class="text-lg font-bold text-white">Visor Unificado</h3>
-                        <p class="text-sm text-slate-400 mt-2">Mapa interactivo que muestra las unidades compartidas en tiempo real sin login.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-realtime mb-2 inline-block">Leaflet JS</span>
+                            <h3 class="text-lg font-bold text-white">Visor Unificado</h3>
+                            <p class="text-sm text-slate-400 mt-2">Mapa interactivo que muestra las unidades compartidas en tiempo real sin login.</p>
+                        </div>
                     </div>
                 </article>
             </div>
@@ -137,38 +148,44 @@
 
         <div class="mb-12">
             <h2 class="text-2xl font-bold text-white mb-6 flex items-center"><i class="fas fa-file-invoice text-emerald-500 mr-3"></i> Reportería Automatizada</h2>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-fr">
                 
-                <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('https://imgfz.com/i/8KDEsR0.png', 'Configuración de Reportes')">
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/8KDEsR0.png', 'Configuración de Reportes')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/8KDEsR0.png" alt="Admin Reportes">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <h3 class="text-lg font-bold text-white">Panel de Excesos</h3>
-                        <p class="text-sm text-slate-400 mt-2">Configuración de reportes de velocidad con envío programado por correo.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Panel de Excesos</h3>
+                            <p class="text-sm text-slate-400 mt-2">Configuración de reportes de velocidad con envío programado por correo.</p>
+                        </div>
                     </div>
                 </article>
 
-                <article class="glass-card rounded-xl flex flex-col group lg:col-span-2" onclick="openModal('https://imgfz.com/i/6xs1TrO.png', 'Reporte Dinámico (Heatmap)')">
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/6xs1TrO.png', 'Reporte Dinámico (Heatmap)')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/6xs1TrO.png" alt="Heatmap Output">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <h3 class="text-lg font-bold text-white">Output Dinámico (Heatmap)</h3>
-                        <p class="text-sm text-slate-400 mt-2">Reporte interactivo generado en servidor. Muestra puntos de calor de incidencias y trazado de rutas críticas.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Output Dinámico (Heatmap)</h3>
+                            <p class="text-sm text-slate-400 mt-2">Reporte interactivo generado en servidor. Muestra puntos de calor de incidencias y trazado de rutas críticas.</p>
+                        </div>
                     </div>
                 </article>
 
-                 <article class="glass-card rounded-xl flex flex-col group" onclick="openModal('https://imgfz.com/i/hlHQoTr.png', 'Bitácora de Movimientos')">
+                 <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/hlHQoTr.png', 'Bitácora de Movimientos')">
                     <div class="img-overlay">
                         <img src="https://imgfz.com/i/hlHQoTr.png" alt="Tiempos y Movimientos">
                         <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <div class="p-5">
-                        <h3 class="text-lg font-bold text-white">Tiempos y Movimientos</h3>
-                        <p class="text-sm text-slate-400 mt-2">Análisis detallado de ruta con paradas, encendidos y kilometraje.</p>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Tiempos y Movimientos</h3>
+                            <p class="text-sm text-slate-400 mt-2">Análisis detallado de ruta con paradas, encendidos y kilometraje.</p>
+                        </div>
                     </div>
                 </article>
 
@@ -239,7 +256,6 @@
                 isDragging = true;
                 startX = e.clientX;
                 startY = e.clientY;
-                // Obtener transformación actual
                 const style = window.getComputedStyle(img);
                 const matrix = new WebKitCSSMatrix(style.transform);
                 initialLeft = matrix.m41;
