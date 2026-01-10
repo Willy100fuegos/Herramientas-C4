@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard GPS Unificado</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Leaflet CSS y JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <!-- Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+        #map { height: 500px; border-radius: 0.75rem; z-index: 10; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); }
+        #details-table-container { max-height: 500px; overflow-y: auto; border-radius: 0.75rem; border: 1px solid #e2e8f0; }
+        
+        /* Estilos scrollbar */
+        #details-table-container::-webkit-scrollbar { width: 8px; }
+        #details-table-container::-webkit-scrollbar-track { background: #f8fafc; border-radius: 0.75rem;}
+        #details-table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        /* Filtro Horizontal */
+        #unit-filter-list-container { -webkit-overflow-scrolling: touch; }
+        #unit-filter-list-container::-webkit-scrollbar { height: 6px; }
+        
+        .filter-button {
+            display: inline-block; padding: 0.5rem 1rem; font-weight: 500; color: #374151; 
+            background-color: #ffffff; border: 1px solid #d1d5db; border-radius: 9999px; 
+            cursor: pointer; transition: all 0.2s; white-space: nowrap;
+        }
+        .filter-button.active {
+            background-color: #3b82f6; color: #ffffff; border-color: #3b82f6;
+        }
+        .kpi-card {
+            background-color: white; padding: 1.25rem; border-radius: 0.75rem; 
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border-left-width: 4px;
+            transition: transform 0.2s;
+        }
+        .kpi-card:hover { transform: translateY(-2px); }
+        .loader {
+            border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%;
+            width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* Animación de Pulso para Marcador Seleccionado */
+        .pulsing-icon {
+            display: block;
+            width: 20px; height: 20px;
+            background: #ef4444; /* Red */
+            border-radius: 50%;
+            border: 3px solid white;
+            box-shadow: 0 0 0 rgba(239, 68, 68, 0.4);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+        /* Cursor Pointer para filas */
+        tbody tr { cursor: pointer; }
+    </style>
+</head>
+<body class="p-4 md:p-6">
+    <div class="container mx-auto space-y-6">
+
+        <!-- Header -->
+        <header class="bg-white p-4 md:p-6 rounded-xl shadow-lg">
+            <div class="flex flex-col md:flex-row justify-between items-center mb-4">
+                 <div class="flex items-center space-x-3 mb-4 md:mb-0">
+                    <img src="https://TU-WEB.mx/img/logo.png" alt="GORATRACK Logo" class="h-10 md:h-12"/>
+                    <div>
+                        <h1 class="text-xl md:text-2xl font-bold text-gray-800">Dashboard GPS Multi-Cuenta</h1>
+                        <p class="text-xs text-gray-500">Unificado: Centurion • UIPSA • ETF</p>
+                    </div>
+                 </div>
+                 <div class="flex space-x-2">
+                    <button id="download-button" class="hidden bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md text-sm transition duration-150 ease-in-out">
+                        Descargar Reporte
+                    </button>
+                    <button id="generate-button" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md text-sm transition duration-150 ease-in-out">
+                        Generar Dashboard
+                    </button>
+                 </div>
+            </div>
+
+            <!-- Selector de Cuentas -->
+            <div class="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                <span class="text-sm font-bold text-gray-700 mr-3">Cuentas a incluir:</span>
+                <div class="inline-flex space-x-4">
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="account-selector form-checkbox h-4 w-4 text-blue-600" value="centurion" checked>
+                        <span class="ml-2 text-sm text-gray-700">Centurion</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="account-selector form-checkbox h-4 w-4 text-blue-600" value="uipsa" checked>
+                        <span class="ml-2 text-sm text-gray-700">UIPSA</span>
+                    </label>
+                    <label class="inline-flex items-center cursor-pointer">
+                        <input type="checkbox" class="account-selector form-checkbox h-4 w-4 text-blue-600" value="etf" checked>
+                        <span class="ml-2 text-sm text-gray-700">ETF</span>
+                    </label>
+                </div>
+            </div>
+            
+            <div id="message-area" class="text-sm text-red-600 font-medium mb-4"></div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <!-- Buscador Unidades -->
+                <div class="md:col-span-1">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Buscar Unidad</label>
+                    <input type="search" id="unit-search-filter" placeholder="Filtrar lista..." class="w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm mb-2">
+                    <div id="unit-list" class="bg-gray-50 border border-gray-300 rounded-lg p-2 space-y-1 h-32 overflow-y-auto">
+                        <p class="text-gray-500 text-xs italic p-2">Cargando unidades...</p>
+                    </div>
+                    <div class="mt-1">
+                        <button id="select-all-units" class="text-xs text-blue-600 hover:text-blue-800">Todas</button> /
+                        <button id="deselect-all-units" class="text-xs text-blue-600 hover:text-blue-800">Ninguna</button>
+                        <span id="unit-count-badge" class="float-right text-xs bg-gray-200 px-2 rounded-full text-gray-600">0 unidades</span>
+                    </div>
+                </div>
+                
+                <!-- Filtro Rápido -->
+                <div class="md:col-span-1">
+                    <label for="date-filter" class="block text-sm font-medium text-gray-700 mb-1">Filtro</label>
+                    <select id="date-filter" class="w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                        <option value="today">Hoy</option>
+                        <option value="last_hour">Última hora</option>
+                        <option value="yesterday">Ayer</option>
+                        <option value="2_days_ago">2 días atrás</option>
+                        <option value="3_days_ago">3 días atrás</option>
+                        <option value="this_week">Esta Semana</option>
+                        <option value="last_week">Semana Pasada</option>
+                        <option value="this_month">Este mes</option>
+                        <option value="last_month">Mes pasado</option>
+                        <option value="custom">Personalizado</option>
+                    </select>
+                </div>
+
+                <!-- Fechas -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fecha Inicio</label>
+                    <input type="datetime-local" id="start-date" class="w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fecha Fin</label>
+                    <input type="datetime-local" id="end-date" class="w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+                </div>
+            </div>
+        </header>
+
+        <!-- Loader -->
+        <div id="loading-area" class="text-center py-10 hidden">
+            <div class="loader"></div>
+            <p id="loading-text" class="text-gray-600 font-medium">Procesando...</p>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboard-container" class="hidden space-y-6"> 
+            <main id="dashboard-content" class="space-y-6">
+                <!-- Filtro unidades renderizado -->
+                <section id="unit-filter-bar" class="hidden bg-white p-4 rounded-xl shadow-lg">
+                    <h2 class="text-lg font-bold text-gray-800 mb-3">Filtrar Vista</h2>
+                    <div id="unit-filter-list-container" class="flex items-center space-x-2 overflow-x-auto whitespace-nowrap pb-2"></div>
+                </section>
+                
+                <!-- KPIs -->
+                <section>
+                     <h2 class="text-xl font-semibold text-gray-700 mb-3">Resumen Global</h2>
+                     <div id="kpi-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </section>
+
+                 <!-- Mapa y Tabla -->
+                <section class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                     <div class="xl:col-span-2">
+                          <h2 class="text-xl font-semibold text-gray-700 mb-3">Mapa</h2>
+                          <div id="map"></div>
+                     </div>
+                     <div class="xl:col-span-1">
+                          <h2 class="text-xl font-semibold text-gray-700 mb-3">Eventos</h2>
+                          <div id="details-table-container">
+                               <table class="min-w-full text-sm text-left">
+                                    <thead class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0 z-20">
+                                         <tr>
+                                              <th class="py-2 px-3">Unidad</th>
+                                              <th class="py-2 px-3">Estado</th>
+                                              <th class="py-2 px-3">Inicio</th>
+                                              <th class="py-2 px-3">Duración</th>
+                                         </tr>
+                                    </thead>
+                                    <tbody id="details-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                               </table>
+                          </div>
+                     </div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓN ---
+        const PROXY_URL = "https://TU-WEB.mx/api/gps_proxy_unified.php"; 
+        const MAX_CONCURRENT_REQUESTS = 5;
+
+        // --- DOM Elements ---
+        const els = {
+            unitList: document.getElementById('unit-list'),
+            unitSearch: document.getElementById('unit-search-filter'),
+            unitCount: document.getElementById('unit-count-badge'),
+            dateFilter: document.getElementById('date-filter'),
+            start: document.getElementById('start-date'),
+            end: document.getElementById('end-date'),
+            btnGenerate: document.getElementById('generate-button'),
+            btnDownload: document.getElementById('download-button'),
+            loader: document.getElementById('loading-area'),
+            loadText: document.getElementById('loading-text'),
+            dashContainer: document.getElementById('dashboard-container'),
+            msgArea: document.getElementById('message-area'),
+            accountChecks: document.querySelectorAll('.account-selector'),
+            kpis: document.getElementById('kpi-container'),
+            table: document.getElementById('details-table-body'),
+            filterBar: document.getElementById('unit-filter-list-container'),
+            filterSection: document.getElementById('unit-filter-bar')
+        };
+
+        // --- ESTADO ---
+        let map, routeLayerGroup, highlightLayer;
+        let unitsData = []; 
+        let allProcessedData = null; 
+        let currentDisplayedEvents = []; 
+        
+        // --- INICIALIZACIÓN ---
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("Script iniciado...");
+            els.unitList.innerHTML = '<p class="text-blue-600 text-xs p-2 italic">Iniciando sistema...</p>';
+            
+            try {
+                initMap();
+                applyDateFilter('today'); 
+                
+                els.btnGenerate.addEventListener('click', handleGenerate);
+                els.btnDownload.addEventListener('click', downloadReport);
+                els.unitSearch.addEventListener('input', filterUnitListUI);
+                els.dateFilter.addEventListener('change', (e) => applyDateFilter(e.target.value));
+                els.start.addEventListener('change', () => els.dateFilter.value = 'custom');
+                els.end.addEventListener('change', () => els.dateFilter.value = 'custom');
+
+                els.accountChecks.forEach(chk => chk.addEventListener('change', fetchMultiAccountUnits));
+                document.getElementById('select-all-units').onclick = () => toggleUnits(true);
+                document.getElementById('deselect-all-units').onclick = () => toggleUnits(false);
+
+                fetchMultiAccountUnits();
+            } catch (err) {
+                console.error("Error crítico en inicialización:", err);
+                els.unitList.innerHTML = '<p class="text-red-500 text-xs p-2">Error de script. Ver consola.</p>';
+            }
+        });
+
+        // --- ALGORITMO DE MEJOR APROXIMACIÓN PARA TRAYECTO (ROBUSTO 3.0) ---
+        function getRouteSegment(route, startMs, endMs) {
+            if (!route || route.length === 0) return [];
+            
+            let startIdx = -1;
+            let endIdx = -1;
+            let minStartDiff = Infinity;
+            let minEndDiff = Infinity;
+
+            // Recorrer una sola vez para encontrar los bordes más cercanos
+            // Esto asegura que SIEMPRE encontremos el punto más cercano al inicio y al fin
+            for (let i = 0; i < route.length; i++) {
+                // p[2] es string UTC "YYYY-MM-DD HH:mm:ss"
+                const pTime = new Date(route[i][2].replace(' ', 'T') + 'Z').getTime();
+                
+                const diffStart = Math.abs(pTime - startMs);
+                if (diffStart < minStartDiff) {
+                    minStartDiff = diffStart;
+                    startIdx = i;
+                }
+
+                const diffEnd = Math.abs(pTime - endMs);
+                if (diffEnd < minEndDiff) {
+                    minEndDiff = diffEnd;
+                    endIdx = i;
+                }
+            }
+
+            if (startIdx !== -1 && endIdx !== -1) {
+                // Asegurar orden
+                if (startIdx > endIdx) {
+                    const temp = startIdx; startIdx = endIdx; endIdx = temp;
+                }
+                // Si son el mismo punto (muy raro en mov largo), intentar expandir para visibilidad
+                if (startIdx === endIdx) {
+                    if (startIdx > 0) startIdx--;
+                    if (endIdx < route.length - 1) endIdx++;
+                }
+                return route.slice(startIdx, endIdx + 1).map(p => [p[0], p[1]]);
+            }
+            
+            return [];
+        }
+
+        // --- INTERACCIÓN MAPA (HIGHLIGHT) ---
+        window.handleEventClick = (eventIndex) => {
+            highlightLayer.clearLayers();
+
+            const event = currentDisplayedEvents[eventIndex];
+            if (!event) return;
+
+            if (event.type === 'Parada' && event.lat) {
+                const pulseIcon = L.divIcon({ className: 'pulsing-icon', iconSize: [20, 20], iconAnchor: [10, 10] });
+                L.marker([event.lat, event.lng], {icon: pulseIcon}).addTo(highlightLayer);
+                map.flyTo([event.lat, event.lng], 16);
+            } 
+            else if (event.type === 'Movimiento') {
+                const unitRoute = allProcessedData.rawRoutes[event.imei];
+                if (!unitRoute) return;
+
+                const startTs = new Date(event.startUTC).getTime();
+                const endTs = startTs + (event.durSec * 1000);
+
+                // Usamos la nueva lógica 3.0 de "Mejor Aproximación"
+                const segmentPoints = getRouteSegment(unitRoute, startTs, endTs);
+
+                if (segmentPoints.length > 0) {
+                    const line = L.polyline(segmentPoints, { color: '#f97316', weight: 6, opacity: 1.0 }).addTo(highlightLayer);
+                    map.fitBounds(line.getBounds(), { padding: [80, 80] });
+                }
+            }
+        };
+
+        // --- LÓGICA DE FECHAS ---
+        function applyDateFilter(filterType) {
+            const now = new Date();
+            let startDate, endDate;
+            const setTime = (d, h, m, s) => { d.setHours(h,m,s,0); return d; };
+            const toLocalIsoString = (d) => {
+                const offset = d.getTimezoneOffset() * 60000;
+                return new Date(d.getTime() - offset).toISOString().slice(0, 16);
+            };
+
+            switch(filterType) {
+                case 'today':
+                    startDate = setTime(new Date(now), 0, 0, 0);
+                    endDate = new Date(startDate); endDate.setDate(startDate.getDate() + 1);
+                    break;
+                case 'last_hour':
+                    endDate = new Date(now); startDate = new Date(now.getTime() - 3600000);
+                    break;
+                case 'yesterday':
+                    const yest = new Date(now); yest.setDate(yest.getDate() - 1);
+                    startDate = setTime(new Date(yest), 0, 0, 0);
+                    endDate = setTime(new Date(now), 0, 0, 0);
+                    break;
+                case '2_days_ago':
+                    const d2 = new Date(now); d2.setDate(d2.getDate() - 2);
+                    startDate = setTime(new Date(d2), 0, 0, 0);
+                    const d1 = new Date(now); d1.setDate(d1.getDate() - 1);
+                    endDate = setTime(new Date(d1), 0, 0, 0);
+                    break;
+                case '3_days_ago':
+                    const d3 = new Date(now); d3.setDate(d3.getDate() - 3);
+                    startDate = setTime(new Date(d3), 0, 0, 0);
+                    const d2b = new Date(now); d2b.setDate(d2b.getDate() - 2);
+                    endDate = setTime(new Date(d2b), 0, 0, 0);
+                    break;
+                case 'this_week':
+                    const day = now.getDay();
+                    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+                    startDate = setTime(new Date(now.setDate(diff)), 0, 0, 0);
+                    endDate = new Date(); 
+                    break;
+                case 'last_week':
+                    const pWeek = new Date(now); pWeek.setDate(pWeek.getDate() - 7);
+                    const pDay = pWeek.getDay();
+                    const pDiff = pWeek.getDate() - pDay + (pDay === 0 ? -6 : 1);
+                    startDate = setTime(new Date(pWeek.setDate(pDiff)), 0, 0, 0);
+                    endDate = new Date(startDate); endDate.setDate(endDate.getDate() + 7);
+                    break;
+                case 'this_month':
+                    startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+                    endDate = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0);
+                    break;
+                case 'last_month':
+                    startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+                    endDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+                    break;
+                default: return; 
+            }
+            if(startDate && endDate) {
+                els.start.value = toLocalIsoString(startDate);
+                els.end.value = toLocalIsoString(endDate);
+            }
+        }
+
+        // --- API & DATA LOGIC ---
+        async function fetchMultiAccountUnits() {
+            els.unitList.innerHTML = '<p class="text-gray-500 text-xs p-2">Conectando con servidor...</p>';
+            unitsData = []; 
+
+            const selectedAccounts = Array.from(els.accountChecks).filter(cb => cb.checked).map(cb => cb.value);
+
+            if (selectedAccounts.length === 0) {
+                els.unitList.innerHTML = '<p class="text-red-500 text-xs p-2">Selecciona al menos una cuenta.</p>';
+                updateUnitCount(0);
+                return;
+            }
+
+            try {
+                const promises = selectedAccounts.map(account => {
+                    const params = new URLSearchParams({ command_action: 'USER_GET_OBJECTS', account: account });
+                    return fetch(`${PROXY_URL}?${params.toString()}`)
+                        .then(res => {
+                            if(!res.ok) throw new Error("Error HTTP " + res.status);
+                            return res.json();
+                        })
+                        .then(data => {
+                            if(data && !data.error && Array.isArray(data)) {
+                                return data.map(u => ({ ...u, account: account })); 
+                            }
+                            return [];
+                        })
+                        .catch(err => []);
+                });
+
+                const results = await Promise.all(promises);
+                unitsData = results.flat();
+                unitsData.sort((a, b) => a.name.localeCompare(b.name));
+                renderUnitList();
+
+            } catch (e) {
+                els.unitList.innerHTML = '<p class="text-red-500 text-xs p-2">Error de conexión. Verifica el archivo PHP.</p>';
+            }
+        }
+
+        function renderUnitList() {
+            els.unitList.innerHTML = '';
+            if (unitsData.length === 0) {
+                els.unitList.innerHTML = '<p class="text-gray-500 text-xs p-2">No se encontraron unidades.</p>';
+                updateUnitCount(0);
+                return;
+            }
+
+            const acctColors = { 'centurion': 'text-blue-600', 'uipsa': 'text-purple-600', 'etf': 'text-green-600' };
+            const acctLabels = { 'centurion': 'C', 'uipsa': 'U', 'etf': 'E' };
+
+            unitsData.forEach(unit => {
+                if(!unit.imei) return;
+                const div = document.createElement('div');
+                div.className = 'flex items-center hover:bg-gray-100 p-1 rounded';
+                const badgeClass = acctColors[unit.account] || 'text-gray-600';
+                const badgeLetter = acctLabels[unit.account] || '?';
+
+                div.innerHTML = `
+                    <input type="checkbox" id="u-${unit.imei}" value="${unit.imei}" class="unit-check h-4 w-4 text-blue-600 rounded border-gray-300">
+                    <label for="u-${unit.imei}" class="ml-2 text-sm text-gray-700 cursor-pointer flex-1 truncate">
+                        <span class="font-bold text-xs ${badgeClass} mr-1">[${badgeLetter}]</span>
+                        ${unit.name}
+                    </label>
+                `;
+                els.unitList.appendChild(div);
+            });
+            updateUnitCount(unitsData.length);
+            filterUnitListUI();
+        }
+
+        async function handleGenerate() {
+            const selectedImeis = Array.from(els.unitList.querySelectorAll('.unit-check:checked')).map(cb => cb.value);
+            
+            if (selectedImeis.length === 0) return showMessage("Selecciona al menos una unidad.", true);
+            
+            const startUTC = formatLocalToUTCForAPI(els.start.value);
+            const endUTC = formatLocalToUTCForAPI(els.end.value);
+
+            if (!startUTC || !endUTC) return showMessage("Fechas inválidas.", true);
+            if (new Date(els.start.value) >= new Date(els.end.value)) return showMessage("La fecha inicio debe ser menor a fin.", true);
+
+            toggleLoading(true, "Descargando rutas...");
+            
+            try {
+                let allResults = [];
+                for (let i = 0; i < selectedImeis.length; i += MAX_CONCURRENT_REQUESTS) {
+                    const batch = selectedImeis.slice(i, i + MAX_CONCURRENT_REQUESTS);
+                    const batchPromises = batch.map(imei => fetchRoute(imei, startUTC, endUTC));
+                    const batchResults = await Promise.all(batchPromises);
+                    allResults = allResults.concat(batchResults);
+                }
+
+                allProcessedData = { rawData: allResults, ...processRawData(allResults) };
+                renderDashboard(allProcessedData);
+                populateFilterBar(allResults);
+                
+                const unitsLoaded = allResults.filter(r => !r.error && r.routeData && r.routeData.route_length).length;
+                showMessage(`Proceso completado. ${unitsLoaded} unidades cargadas.`);
+
+            } catch (e) {
+                showMessage("Error: " + e.message, true);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+
+        async function fetchRoute(imei, startUTC, endUTC) {
+            const unitInfo = unitsData.find(u => u.imei == imei);
+            const account = unitInfo ? unitInfo.account : 'centurion';
+            const name = unitInfo ? unitInfo.name : `IMEI ${imei}`;
+
+            const params = new URLSearchParams({
+                command_action: 'OBJECT_GET_ROUTE',
+                account: account, imei: imei, start_date: startUTC, end_date: endUTC
+            });
+
+            try {
+                const res = await fetch(`${PROXY_URL}?${params.toString()}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                return { imei, name, account, routeData: data };
+            } catch (e) {
+                return { imei, name, account, error: true, msg: e.message };
+            }
+        }
+
+        function processRawData(rawData) {
+            let events = [], routes = {};
+            let kpis = { totalDist: 0, maxSpeed: 0, stops: 0, moveTime: 0, stopTime: 0, unitsWithData: 0 };
+
+            rawData.forEach(u => {
+                const d = u.routeData || u; 
+                if(u.error || !d || d.route_length === undefined) return;
+                
+                kpis.unitsWithData++;
+                kpis.totalDist += parseFloat(d.route_length || 0);
+                kpis.maxSpeed = Math.max(kpis.maxSpeed, parseInt(d.top_speed || 0));
+                kpis.stops += (d.stops?.length || 0);
+                kpis.moveTime += parseDuration(d.drives_duration);
+                kpis.stopTime += parseDuration(d.stops_duration);
+
+                const imei = u.imei;
+                if(d.route) {
+                    routes[imei] = d.route.map(p => [parseFloat(p[1]), parseFloat(p[2]), p[0]]).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+                }
+
+                const pushEvent = (type, list) => {
+                    if(!list) return;
+                    list.forEach(item => {
+                        const startUTC = item.dt_start; 
+                        const startMX = convertUTCToMexicoTime(startUTC);
+
+                        events.push({
+                            unit: u.name,
+                            imei: u.imei,
+                            type: type, 
+                            start: startMX, 
+                            startUTC: startUTC, 
+                            duration: item.duration,
+                            durSec: parseDuration(item.duration),
+                            dist: parseFloat(item.route_length || 0),
+                            lat: parseFloat(item.lat),
+                            lng: parseFloat(item.lng)
+                        });
+                    });
+                };
+                pushEvent('Movimiento', d.drives);
+                pushEvent('Parada', d.stops);
+            });
+
+            events.sort((a,b) => {
+                 const dA = a.start ? new Date(a.start.replace(' ', 'T')) : 0;
+                 const dB = b.start ? new Date(b.start.replace(' ', 'T')) : 0;
+                 return dA - dB;
+            });
+            return { kpis, events, rawRoutes: routes };
+        }
+
+        function formatLocalToUTCForAPI(localDateString) {
+            if(!localDateString) return '';
+            const d = new Date(localDateString); 
+            const year = d.getUTCFullYear();
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            const hours = String(d.getUTCHours()).padStart(2, '0');
+            const minutes = String(d.getUTCMinutes()).padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}:00`;
+        }
+
+        function convertUTCToMexicoTime(dateString) {
+            if (!dateString) return '';
+            const utcDate = new Date(dateString.replace(' ', 'T') + 'Z');
+            if (isNaN(utcDate.getTime())) return dateString; 
+            const options = {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false, timeZone: 'America/Mexico_City'
+            };
+            const parts = new Intl.DateTimeFormat('en-CA', options).formatToParts(utcDate); 
+            const p = {}; parts.forEach(({type, value}) => p[type] = value);
+            return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+        }
+
+        function renderDashboard(dataContext) {
+            let displayData = Array.isArray(dataContext) ? processRawData(dataContext) : dataContext;
+            const { kpis, events, rawRoutes } = displayData;
+            
+            currentDisplayedEvents = events;
+
+            els.dashContainer.classList.remove('hidden');
+            els.btnDownload.classList.remove('hidden');
+            setTimeout(() => { map.invalidateSize(); }, 100);
+
+            els.kpis.innerHTML = `
+                <div class="kpi-card border-blue-500"><p class="text-gray-500 text-sm">Distancia</p><p class="text-2xl font-bold text-blue-600">${kpis.totalDist.toFixed(1)} km</p></div>
+                <div class="kpi-card border-red-500"><p class="text-gray-500 text-sm">Vel. Máx</p><p class="text-2xl font-bold text-red-600">${kpis.maxSpeed} kph</p></div>
+                <div class="kpi-card border-yellow-500"><p class="text-gray-500 text-sm">Paradas</p><p class="text-2xl font-bold text-yellow-600">${kpis.stops}</p></div>
+                <div class="kpi-card border-green-500"><p class="text-gray-500 text-sm">Movimiento</p><p class="text-lg font-bold text-green-600">${formatSeconds(kpis.moveTime)}</p></div>
+                <div class="kpi-card border-orange-500"><p class="text-gray-500 text-sm">Detenido</p><p class="text-lg font-bold text-orange-600">${formatSeconds(kpis.stopTime)}</p></div>
+            `;
+
+            if(events.length === 0) els.table.innerHTML = '<tr><td colspan="4" class="p-4 text-center">Sin datos.</td></tr>';
+            else {
+                els.table.innerHTML = events.map((e, idx) => `
+                    <tr onclick="handleEventClick(${idx})" 
+                        class="${e.type==='Parada'?'bg-yellow-50 text-yellow-900':e.type==='Movimiento'?'bg-green-50 text-green-900':''} hover:bg-gray-200 transition border-b cursor-pointer">
+                        <td class="px-3 py-2 text-xs font-bold">${e.unit}</td>
+                        <td class="px-3 py-2 text-[10px] uppercase"><span class="px-2 py-0.5 rounded-full ${e.type==='Parada'?'bg-yellow-200':'bg-green-200'}">${e.type}</span></td>
+                        <td class="px-3 py-2 text-xs text-gray-600">${e.start}</td>
+                        <td class="px-3 py-2 text-xs text-gray-600">${e.duration}</td>
+                    </tr>
+                `).join('');
+            }
+            renderMapLayers(events, rawRoutes, unitsData);
+        }
+
+        function renderMapLayers(events, rawRoutes, allUnitsRef) {
+            routeLayerGroup.clearLayers();
+            highlightLayer.clearLayers(); 
+            
+            const colors = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c'];
+            let colorIdx = 0, bounds = [];
+
+            Object.keys(rawRoutes).forEach(imei => {
+                const path = rawRoutes[imei];
+                if(!path || path.length < 1) return;
+                const color = colors[colorIdx++ % colors.length];
+                const unitName = allUnitsRef ? (allUnitsRef.find(u => u.imei == imei)?.name || imei) : imei;
+
+                if (path.length > 1) {
+                    L.polyline(path, { color, weight: 4, opacity: 0.7 }).addTo(routeLayerGroup);
+                    L.circleMarker(path[0], {color: '#10b981', radius: 5, fillOpacity: 1}).addTo(routeLayerGroup).bindPopup(`<b>${unitName}</b><br>Inicio`);
+                    L.circleMarker(path[path.length-1], {color: '#ef4444', radius: 5, fillOpacity: 1}).addTo(routeLayerGroup).bindPopup(`<b>${unitName}</b><br>Fin`);
+                } else {
+                    L.circleMarker(path[0], {color: color, radius: 5}).addTo(routeLayerGroup).bindPopup(`<b>${unitName}</b><br>Ubicación única`);
+                }
+                bounds = bounds.concat(path.map(p => [p[0], p[1]]));
+            });
+
+            events.filter(e => e.type === 'Parada' && e.lat).forEach(stop => {
+                L.circleMarker([stop.lat, stop.lng], { color: '#4b5563', radius: 3, weight: 1, fillColor: '#f59e0b', fillOpacity: 0.8 }).addTo(routeLayerGroup)
+                .bindPopup(`<b>${stop.unit}</b><br>Parada: ${stop.start}<br>Dur: ${stop.duration}`);
+                bounds.push([stop.lat, stop.lng]);
+            });
+
+            if(bounds.length) map.fitBounds(bounds, {padding: [50, 50]});
+            else map.setView([23.6345, -102.5528], 5);
+        }
+
+        // --- UTILS ---
+        function initMap() {
+            map = L.map('map').setView([23.6345, -102.5528], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+            routeLayerGroup = L.layerGroup().addTo(map);
+            highlightLayer = L.layerGroup().addTo(map); 
+        }
+        function toggleLoading(show, txt) {
+            els.loader.classList.toggle('hidden', !show);
+            els.dashContainer.classList.toggle('hidden', show);
+            if(show) els.btnDownload.classList.add('hidden');
+            if(txt) els.loadText.textContent = txt;
+        }
+        function showMessage(msg, isErr) {
+            els.msgArea.textContent = msg;
+            els.msgArea.className = `text-sm font-medium ${isErr ? 'text-red-600' : 'text-green-600'} mb-4`;
+        }
+        function parseDuration(s) { if(!s)return 0; let sec=0, p=s.toLowerCase().split(' '); for(let i=0;i<p.length;i+=2){ const v=parseInt(p[i]); if(isNaN(v))continue; if(p[i+1]?.startsWith('d'))sec+=v*86400;else if(p[i+1]?.startsWith('h'))sec+=v*3600;else if(p[i+1]?.startsWith('m'))sec+=v*60;else sec+=v; } return sec; }
+        function formatSeconds(s) { if(isNaN(s)||s<0)return "0s"; const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=Math.floor(s%60); return `${h}h ${m}m ${sec}s`; }
+        function filterUnitListUI() { const t=els.unitSearch.value.toLowerCase(); els.unitList.querySelectorAll('div').forEach(d=>{ d.style.display=d.textContent.toLowerCase().includes(t)?'flex':'none'; }); }
+        function updateUnitCount(n) { els.unitCount.textContent = `${n} unidades`; }
+        function toggleUnits(s) { document.querySelectorAll('.unit-check').forEach(c => { if(c.parentElement.style.display!=='none') c.checked=s; }); }
+        
+        function populateFilterBar(d) {
+             els.filterBar.innerHTML = ''; els.filterSection.classList.remove('hidden');
+             const btnAll = document.createElement('button'); btnAll.className='filter-button active mr-2 mb-2'; btnAll.textContent='Todas';
+             btnAll.onclick=(e)=>{ setActiveFilter(e.target); renderDashboard(allProcessedData); }; els.filterBar.appendChild(btnAll);
+             const uqs = [...new Map(d.map(i=>[i.imei,i])).values()].sort((a,b)=>a.name.localeCompare(b.name));
+             uqs.forEach(u=>{
+                 if(u.error)return;
+                 const b=document.createElement('button'); b.className='filter-button mr-2 mb-2'; b.textContent=u.name;
+                 b.onclick=(e)=>{ setActiveFilter(e.target); renderDashboard(allProcessedData.rawData.filter(r=>r.imei===u.imei)); };
+                 els.filterBar.appendChild(b);
+             });
+        }
+        function setActiveFilter(t) { document.querySelectorAll('.filter-button').forEach(b=>b.classList.remove('active')); t.classList.add('active'); }
+        
+        // --- DESCARGA (COMPLETA Y AUTÓNOMA) ---
+        function downloadReport() {
+            if (!allProcessedData) return showMessage("Genera un reporte primero", true);
+            const rData = {
+                events: allProcessedData.events, rawRoutes: allProcessedData.rawRoutes, 
+                rawData: allProcessedData.rawData, 
+                period: `${els.start.value.replace('T', ' ')} a ${els.end.value.replace('T', ' ')}`
+            };
+            const jsonStr = JSON.stringify(rData).replace(/<\/script>/g, '<\\/script>'); 
+
+            const reportHtml = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><title>Reporte GPS - Goratrack</title>
+<script src="https://cdn.tailwindcss.com"><\/script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" /><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+    body { font-family: 'Inter', sans-serif; background: #f8fafc; padding: 20px; }
+    #main-layout { display: flex; gap: 20px; height: 600px; margin-top: 20px; }
+    #map { flex: 2; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); height: 100%; }
+    #events-panel { flex: 1; background: white; border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+    .kpi-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid; }
+    .kpi-blue { border-color: #3b82f6; } .kpi-red { border-color: #ef4444; } .kpi-yellow { border-color: #eab308; } .kpi-green { border-color: #22c55e; } .kpi-orange { border-color: #f97316; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th { text-align: left; background: #f3f4f6; padding: 10px; position: sticky; top: 0; z-index: 10; }
+    td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; }
+    tr:hover { background: #f9fafb; cursor: pointer; }
+    .header-logo { height: 40px; }
+    footer { text-align: center; margin-top: 30px; font-size: 0.75rem; color: #6b7280; }
+    #table-scroll { overflow-y: auto; flex: 1; }
+    #table-scroll::-webkit-scrollbar { width: 6px; }
+    #table-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    /* Estilos Filtros */
+    #filter-bar { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0; margin-bottom: 20px; }
+    .filter-btn { padding: 6px 12px; font-size: 0.85rem; border: 1px solid #d1d5db; border-radius: 20px; background: white; cursor: pointer; white-space: nowrap; transition: 0.2s; }
+    .filter-btn:hover { background: #f3f4f6; }
+    .filter-btn.active { background: #3b82f6; color: white; border-color: #3b82f6; font-weight: 600; }
+    /* Estilos Pulse */
+    .pulsing-icon { display: block; width: 20px; height: 20px; background: #ef4444; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 0 rgba(239, 68, 68, 0.4); animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); } 70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); } 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); } }
+</style></head><body>
+<div class="max-w-[1600px] mx-auto">
+    <header class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6 flex justify-between items-center">
+        <div><h1 class="text-3xl font-bold text-gray-800">Reporte de Rastreo GPS</h1><p id="period-display" class="text-xl text-gray-600 mt-2 font-medium"></p></div>
+        <img src="https://goratrack.tecuidamos.mx/img/logo.png" class="header-logo" alt="Logo">
+    </header>
+    
+    <div id="filter-bar"></div>
+
+    <div class="grid grid-cols-5 gap-4 mb-6">
+        <div class="kpi-card kpi-blue"><p class="text-gray-500 text-xs font-semibold uppercase">Distancia</p><p id="kpi-dist" class="text-2xl font-bold text-gray-800 mt-1"></p></div>
+        <div class="kpi-card kpi-red"><p class="text-gray-500 text-xs font-semibold uppercase">Vel. Máx</p><p id="kpi-speed" class="text-2xl font-bold text-gray-800 mt-1"></p></div>
+        <div class="kpi-card kpi-yellow"><p class="text-gray-500 text-xs font-semibold uppercase">Paradas</p><p id="kpi-stops" class="text-2xl font-bold text-gray-800 mt-1"></p></div>
+        <div class="kpi-card kpi-green"><p class="text-gray-500 text-xs font-semibold uppercase">Movimiento</p><p id="kpi-move" class="text-xl font-bold text-gray-800 mt-1"></p></div>
+        <div class="kpi-card kpi-orange"><p class="text-gray-500 text-xs font-semibold uppercase">Detenido</p><p id="kpi-stoptime" class="text-xl font-bold text-gray-800 mt-1"></p></div>
+    </div>
+    <div id="main-layout"><div id="map"></div><div id="events-panel"><div class="p-3 bg-gray-50 border-b font-bold text-gray-700 text-sm">Bitácora de Eventos</div><div id="table-scroll"><table id="table"><thead><tr><th>Unidad</th><th>Evento</th><th>Inicio</th><th>Duración</th></tr></thead><tbody id="tbody"></tbody></table></div></div></div>
+    <footer>Goratrack Sistemas</footer>
+</div>
+<script>
+    const data = ${jsonStr};
+    let currentDisplayedEvents = []; // Copia local para el reporte
+    document.getElementById('period-display').textContent = 'Periodo: ' + data.period;
+    
+    function parseDuration(s) { if(!s)return 0; let sec=0, p=s.toLowerCase().split(' '); for(let i=0;i<p.length;i+=2){ const v=parseInt(p[i]); if(isNaN(v))continue; if(p[i+1]?.startsWith('d'))sec+=v*86400;else if(p[i+1]?.startsWith('h'))sec+=v*3600;else if(p[i+1]?.startsWith('m'))sec+=v*60;else sec+=v; } return sec; }
+    function formatSeconds(s) { if(isNaN(s)||s<0)return "0s"; const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), sec=Math.floor(s%60); return h+'h '+m+'m '+sec+'s'; }
+
+    // ALGORITMO ROBUSTO 3.0 (Mejor Aproximación - Igual al Dashboard)
+    function getRouteSegment(route, startMs, endMs) {
+        if (!route || route.length === 0) return [];
+        
+        let startIdx = -1;
+        let endIdx = -1;
+        let minStartDiff = Infinity;
+        let minEndDiff = Infinity;
+
+        for (let i = 0; i < route.length; i++) {
+            const pTime = new Date(route[i][2].replace(' ', 'T') + 'Z').getTime();
+            const diffStart = Math.abs(pTime - startMs);
+            if (diffStart < minStartDiff) { minStartDiff = diffStart; startIdx = i; }
+            const diffEnd = Math.abs(pTime - endMs);
+            if (diffEnd < minEndDiff) { minEndDiff = diffEnd; endIdx = i; }
+        }
+
+        if (startIdx !== -1 && endIdx !== -1) {
+            if (startIdx > endIdx) { const t = startIdx; startIdx = endIdx; endIdx = t; }
+            if (startIdx === endIdx) { if (startIdx > 0) startIdx--; if (endIdx < route.length - 1) endIdx++; }
+            return route.slice(startIdx, endIdx + 1).map(p => [p[0], p[1]]);
+        }
+        return [];
+    }
+
+    // Renderizador Reporte
+    function render(unitImei) {
+        let events2Show = data.events;
+        let routes2Show = data.rawRoutes;
+        
+        if(unitImei !== 'all') {
+            events2Show = data.events.filter(e => e.imei === unitImei);
+            routes2Show = {}; 
+            if(data.rawRoutes[unitImei]) routes2Show[unitImei] = data.rawRoutes[unitImei];
+        }
+        
+        currentDisplayedEvents = events2Show; // Actualizar contexto local
+
+        let kpis = { totalDist: 0, maxSpeed: 0, stops: 0, moveTime: 0, stopTime: 0 };
+        const sourceData = unitImei === 'all' ? data.rawData : data.rawData.filter(u => u.imei === unitImei);
+        sourceData.forEach(u => {
+             const d = u.routeData || u;
+             if(!d.route_length) return;
+             kpis.totalDist += parseFloat(d.route_length || 0);
+             kpis.maxSpeed = Math.max(kpis.maxSpeed, parseInt(d.top_speed || 0));
+             kpis.stops += (d.stops?.length || 0);
+             kpis.moveTime += parseDuration(d.drives_duration);
+             kpis.stopTime += parseDuration(d.stops_duration);
+        });
+
+        document.getElementById('kpi-dist').textContent = kpis.totalDist.toFixed(1) + ' km';
+        document.getElementById('kpi-speed').textContent = kpis.maxSpeed + ' kph';
+        document.getElementById('kpi-stops').textContent = kpis.stops;
+        document.getElementById('kpi-move').textContent = formatSeconds(kpis.moveTime);
+        document.getElementById('kpi-stoptime').textContent = formatSeconds(kpis.stopTime);
+
+        // Tabla con Highlights - Pasamos idx local
+        document.getElementById('tbody').innerHTML = events2Show.map((e, idx) => {
+            const cls = e.type==='Parada' ? 'bg-yellow-50 text-yellow-900 cursor-pointer' : e.type==='Movimiento' ? 'bg-green-50 text-green-900 cursor-pointer' : '';
+            const badge = e.type==='Parada' ? 'bg-yellow-200 text-yellow-800' : 'bg-green-100 text-green-800';
+            return '<tr onclick="handleRowClick('+idx+')" class="'+cls+' hover:bg-gray-100 border-b"><td class="font-medium">'+e.unit+'</td><td><span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase '+badge+'">'+e.type+'</span></td><td class="text-gray-500">'+e.start.split(' ')[1]+'</td><td class="text-gray-500">'+e.duration+'</td></tr>';
+        }).join('');
+
+        lg.clearLayers(); highlightLayer.clearLayers();
+        const colors = ['#2563eb', '#dc2626', '#16a34a', '#9333ea', '#ea580c']; let ci=0, bounds=[];
+        Object.keys(routes2Show).forEach(imei => {
+            const path = routes2Show[imei];
+            if(path?.length) {
+                const pts = path.map(p=>[p[0],p[1]]);
+                L.polyline(pts, {color: colors[ci++%5], weight:4, opacity:0.6}).addTo(lg);
+                if(pts.length>1) { L.circleMarker(pts[0], {color:'#10b981',radius:4,fillOpacity:1}).addTo(lg); L.circleMarker(pts[pts.length-1], {color:'#ef4444',radius:4,fillOpacity:1}).addTo(lg); }
+                bounds = bounds.concat(pts);
+            }
+        });
+        events2Show.filter(e=>e.type==='Parada'&&e.lat).forEach(s=>{
+            L.circleMarker([s.lat,s.lng],{color:'#4b5563',radius:3,fillColor:'#f59e0b',fillOpacity:0.8,weight:1}).addTo(lg).bindPopup('<b>'+s.unit+'</b><br>'+s.start);
+        });
+        if(bounds.length) window.map.fitBounds(bounds,{padding:[20,20]}); else window.map.setView([23.6,-102.5],5);
+    }
+
+    // Lógica de Click en Reporte (Highlight)
+    window.handleRowClick = (idx) => {
+        highlightLayer.clearLayers();
+        const event = currentDisplayedEvents[idx];
+        if(!event) return;
+
+        if (event.type === 'Parada' && event.lat) {
+            const pulseIcon = L.divIcon({ className: 'pulsing-icon', iconSize: [20, 20], iconAnchor: [10, 10] });
+            L.marker([event.lat, event.lng], {icon: pulseIcon}).addTo(highlightLayer);
+            window.map.flyTo([event.lat, event.lng], 16);
+        } else if (event.type === 'Movimiento') {
+            const unitRoute = data.rawRoutes[event.imei];
+            if(!unitRoute) return;
+            const startTs = new Date(event.startUTC).getTime();
+            const endTs = startTs + (event.durSec * 1000);
+            
+            // Usamos algoritmo robusto 3.0
+            const segmentPoints = getRouteSegment(unitRoute, startTs, endTs);
+
+            if (segmentPoints.length > 0) {
+                const line = L.polyline(segmentPoints, { color: '#f97316', weight: 6, opacity: 1.0 }).addTo(highlightLayer);
+                window.map.fitBounds(line.getBounds(), { padding: [50, 50] });
+            }
+        }
+    };
+
+    window.map = L.map('map'); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(window.map);
+    const lg = L.layerGroup().addTo(window.map);
+    const highlightLayer = L.layerGroup().addTo(window.map);
+    
+    const fb = document.getElementById('filter-bar');
+    const createBtn = (txt, id) => {
+        const b = document.createElement('button'); b.className = 'filter-btn ' + (id==='all'?'active':'');
+        b.textContent = txt; 
+        b.onclick = () => { 
+            document.querySelectorAll('.filter-btn').forEach(x=>x.classList.remove('active')); 
+            b.classList.add('active'); render(id); 
+        };
+        fb.appendChild(b);
+    };
+    
+    createBtn('Todas', 'all');
+    const units = [...new Map(data.rawData.map(item => [item.imei, item])).values()].sort((a,b)=>a.name.localeCompare(b.name));
+    units.forEach(u => createBtn(u.name, u.imei));
+
+    render('all');
+
+<\/script></body></html>`;
+            
+            const blob = new Blob([reportHtml], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = `Reporte_Goratrack_${new Date().toISOString().split('T')[0]}.html`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+    </script>
+</body>
+</html>

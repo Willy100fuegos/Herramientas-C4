@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-gray-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Alertas GPS</title>
+    <!-- 1. Cargar Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. Cargar Chart.js y plugins -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://npmcdn.com/chartjs-chart-matrix@^1.1/dist/chartjs-chart-matrix.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3-array@3"></script>
+    
+    <!-- 3. Cargar Firebase (usando los módulos JS) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { 
+            getFirestore, collection, query, where, onSnapshot, 
+            doc, getDoc, updateDoc, getDocs, Timestamp, orderBy, setLogLevel,
+            limit
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =================================================================
+        // CONFIGURACIÓN DE FIREBASE
+        // =================================================================
+        const firebaseConfig = {
+            apiKey: "TU_API_FIREBASE",
+            authDomain: "TU_PROYECTO.firebaseapp.com",
+            projectId: "ID_DE_TU_PROYECTO",
+            storageBucket: "URL_DE_TU_PROYECTO",
+            messagingSenderId: "TU_ID",
+            appId: "TU_APP_ID"
+        };
+        
+        const appId = firebaseConfig.projectId; 
+        const initialAuthToken = null; 
+
+        // =================================================================
+        // FIN: CONFIGURACIÓN
+        // =================================================================
+
+        let app, auth, db, userId, appCollectionPath;
+        let pendingAlertsListener = null; 
+        let historyListener = null;       
+        let charts = {}; 
+        let reportDataCache = []; 
+        
+        let knownPendingAlertIds = new Set(); 
+        let isFirstLoad = true; 
+        let audioContextUnlocked = false; 
+
+        // Variable para controlar si estamos EDITANDO una alerta existente
+        let isEditingMode = false;
+
+        const DIAS_SEMANA = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+        const HORAS_DIA = Array.from({length: 24}, (_, i) => i.toString().padStart(2, '0') + ':00');
+
+
+        // --- Opciones de Motivos ---
+        const MOTIVOS_PREDEFINIDOS = [
+            "La unidad está haciendo relevo de personal",
+            "La unidad se encuentra en rondin",
+            "La unidad se encuentra en inspección",
+            "La unidad se encuentra en punto base",
+            "La unidad se encuentra en lavado",
+            "La unidad salió a carga de combustible",
+            "La unidad salió a una comisión",
+            "La unidad está en revisión mecánica",
+            "La unidad está en acompañamiento de Hormigas",
+            "La unidad salió a acompañamiento de visitas",
+            "La unidad salió a buscar a personal de coordinación",
+            "La unidad se encuentra haciendo entrega/cambio de equipo",
+            "Otro (especificar)"
+        ];
+
+        // --- Inicialización de la App ---
+        function initializeAppLogic() {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                setLogLevel('Debug'); 
+                appCollectionPath = `artifacts/${appId}/public/data/alertas_gps`;
+
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        console.log("Usuario autenticado:", user.uid);
+                        userId = user.uid;
+                        document.getElementById('auth-status').textContent = `Conectado (Usuario: ${userId.substring(0, 8)}...)`;
+                        setupNavigation();
+                        showTab('pendientes'); 
+                        isFirstLoad = true; 
+                    } else {
+                        console.log("Usuario no autenticado, intentando login anónimo...");
+                        userId = null;
+                        document.getElementById('auth-status').textContent = "Conectando...";
+                        await signInAnonymously(auth);
+                    }
+                });
+                
+                // --- Lógica de Desbloqueo de Audio ---
+                function unlockAudio() {
+                    if (audioContextUnlocked) return;
+                    const sound = document.getElementById('notification-sound');
+                    if (!sound) return;
+                    
+                    sound.play().then(() => {
+                        sound.pause();
+                        sound.currentTime = 0;
+                        audioContextUnlocked = true;
+                        console.log("Contexto de audio desbloqueado por el usuario.");
+                        document.removeEventListener('click', unlockAudio);
+                        document.removeEventListener('touchstart', unlockAudio);
+                    }).catch(e => {
+                        // El usuario aún no interactúa o el audio sigue bloqueado
+                    });
+                }
+                document.addEventListener('click', unlockAudio);
+                document.addEventListener('touchstart', unlockAudio);
+
+
+            } catch (error) {
+                console.error("Error inicializando Firebase:", error);
+                document.getElementById('auth-status').textContent = "Error de conexión";
+            }
+        }
+        
+        function playNotificationSound() {
+            if (!audioContextUnlocked) {
+                console.warn("Audio context not unlocked. No se puede reproducir sonido.");
+                return;
+            }
+            try {
+                const sound = document.getElementById('notification-sound');
+                sound.currentTime = 0; 
+                sound.play();
+            } catch (e) {
+                console.error("Error al reproducir sonido:", e);
+            }
+        }
+
+        // --- Lógica de Navegación por Pestañas ---
+        function setupNavigation() {
+            const tabs = document.querySelectorAll('[data-tab]');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabName = tab.dataset.tab;
+                    tabs.forEach(t => t.classList.remove('bg-blue-600', 'text-white'));
+                    tab.classList.add('bg-blue-600', 'text-white');
+                    showTab(tabName);
+                    
+                    if (tabName === 'pendientes') {
+                        document.getElementById('notification-dot').classList.add('hidden');
+                    }
+                });
+            });
+            document.querySelector('[data-tab="pendientes"]').classList.add('bg-blue-600', 'text-white');
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('[data-tab-content]').forEach(content => {
+                content.classList.add('hidden');
+            });
+
+            if (tabName !== 'pendientes' && pendingAlertsListener) {
+                pendingAlertsListener(); 
+                pendingAlertsListener = null;
+                console.log("Listener de pendientes detenido.");
+            }
+            if (tabName !== 'historial' && historyListener) {
+                historyListener(); 
+                historyListener = null;
+                console.log("Listener de historial detenido.");
+            }
+            
+            const activeContent = document.getElementById(`content-${tabName}`);
+            if (activeContent) {
+                activeContent.classList.remove('hidden');
+            }
+
+            if (tabName === 'pendientes') {
+                loadPendingAlerts();
+            } else if (tabName === 'reportes') {
+                setupReportGenerators();
+            } else if (tabName === 'historial') {
+                loadHistoryAlerts();
+            }
+        }
+
+        // --- Pestaña 1: Alertas Pendientes ---
+        function loadPendingAlerts() {
+            if (pendingAlertsListener) return; 
+
+            const alertsTableBody = document.getElementById('alerts-table-body');
+            const noAlertsMessage = document.getElementById('no-alerts-message');
+            
+            const q = query(
+                collection(db, appCollectionPath),
+                where("estado_gestion", "==", "PENDIENTE")
+            );
+
+            console.log("Iniciando listener de pendientes...");
+            pendingAlertsListener = onSnapshot(q, (snapshot) => {
+                let currentAlertIds = new Set();
+                let alerts = [];
+                snapshot.forEach(doc => {
+                    currentAlertIds.add(doc.id);
+                    alerts.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Notificación sonora
+                let newAlertFound = false;
+                if (isFirstLoad) {
+                    knownPendingAlertIds = currentAlertIds;
+                    isFirstLoad = false;
+                } else {
+                    for (const id of currentAlertIds) {
+                        if (!knownPendingAlertIds.has(id)) {
+                            newAlertFound = true;
+                            break; 
+                        }
+                    }
+                    knownPendingAlertIds = currentAlertIds;
+                }
+                
+                if (newAlertFound) {
+                    console.log("¡NUEVA ALERTA RECIBIDA!");
+                    document.getElementById('notification-dot').classList.remove('hidden');
+                    playNotificationSound(); 
+                }
+
+                alerts.sort((a, b) => b.dt_evento.toDate().getTime() - a.dt_evento.toDate().getTime());
+                
+                alertsTableBody.innerHTML = ''; 
+                let alertsToManageCount = 0; 
+
+                alerts.forEach(alert => {
+                    const alertId = alert.id;
+
+                    const tipo = (alert.tipo_alerta || "").toUpperCase();
+                    if (!tipo.includes("DETENIDO") && !tipo.includes("DESVIO DE RUTA") && !tipo.includes("SALIDA GEOCERCA")) {
+                        return; 
+                    }
+                    alertsToManageCount++; 
+                    
+                    const geocercaDisplay = getProcessedGeofence(alert, true) || "N/A";
+
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-gray-50";
+                    tr.innerHTML = `
+                        <td class="p-3 text-sm text-gray-700">${alert.dt_evento.toDate().toLocaleString('es-MX')}</td>
+                        <td class="p-3 text-sm font-medium text-gray-900">${alert.unidad}</td>
+                        <td class="p-3 text-sm text-red-700 font-semibold">${alert.tipo_alerta}</td>
+                        <td class="p-3 text-sm text-gray-600">${geocercaDisplay}</td>
+                        <td class="p-3 text-sm text-blue-600 hover:underline cursor-pointer">
+                            <a href="https://maps.google.com/maps?q=${alert.latitud},${alert.longitud}&z=15" target="_blank">
+                                ${alert.latitud.toFixed(5)}, ${alert.longitud.toFixed(5)}
+                            </a>
+                        </td>
+                        <td class="p-3">
+                            <button data-id="${alertId}" class="manage-alert-btn bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-xs font-medium">
+                                Gestionar
+                            </button>
+                        </td>
+                    `;
+                    alertsTableBody.appendChild(tr);
+                });
+
+                if (alertsToManageCount === 0) {
+                    noAlertsMessage.classList.remove('hidden');
+                } else {
+                    noAlertsMessage.classList.add('hidden');
+                }
+
+                document.querySelectorAll('.manage-alert-btn').forEach(btn => {
+                    // Modo normal de gestión (no edición)
+                    btn.addEventListener('click', () => openManagementModal(btn.dataset.id, false));
+                });
+
+            }, (error) => {
+                console.error("Error en listener de pendientes:", error);
+                noAlertsMessage.textContent = "Error al cargar datos. Revise la consola.";
+                noAlertsMessage.classList.remove('hidden');
+            });
+        }
+
+        // --- Lógica del Modal de Gestión / Edición (MEJORA V16.0) ---
+        async function openManagementModal(alertId, isEdit = false, existingData = null) {
+            console.log("Abriendo modal gestión. ID:", alertId, "EditMode:", isEdit);
+            isEditingMode = isEdit; // Flag global para saber si guardamos o actualizamos
+            
+            const modal = document.getElementById('management-modal');
+            const form = document.getElementById('management-form');
+            const modalTitle = document.getElementById('modal-title');
+            const submitButton = form.querySelector('button[type="submit"]');
+            
+            const selectMotivo = document.getElementById('motivo-select');
+            const otroMotivoInput = document.getElementById('motivo-otro-container');
+            const comentarioInput = document.getElementById('motivo-comentario-container'); 
+            const modalInfo = document.getElementById('modal-alert-info');
+            const txtOtro = document.getElementById('motivo-otro');
+            const txtComentario = document.getElementById('motivo-comentario');
+
+            // Resetear formulario
+            form.reset();
+            form.dataset.alertId = alertId;
+            
+            // Llenar select
+            selectMotivo.innerHTML = '<option value="" disabled selected>-- Seleccione un motivo --</option>';
+            MOTIVOS_PREDEFINIDOS.forEach(motivo => {
+                selectMotivo.innerHTML += `<option value="${motivo}">${motivo}</option>`;
+            });
+            
+            selectMotivo.onchange = () => {
+                if (selectMotivo.value === "Otro (especificar)") {
+                    otroMotivoInput.classList.remove('hidden');
+                } else {
+                    otroMotivoInput.classList.add('hidden');
+                }
+            };
+            comentarioInput.classList.remove('hidden'); 
+
+            // Configuración según Modo (Gestión vs Edición)
+            if (isEdit) {
+                modalTitle.textContent = "Corregir Gestión de Alerta";
+                submitButton.textContent = "Guardar Corrección";
+                submitButton.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+                submitButton.classList.add('bg-orange-600', 'hover:bg-orange-700');
+                
+                // Pre-llenar datos
+                if (existingData) {
+                    modalInfo.innerHTML = `
+                        <strong>Editando registro de:</strong> ${existingData.unidad}<br>
+                        <strong>Alerta:</strong> ${existingData.tipo_alerta}
+                    `;
+                    
+                    // Seleccionar motivo actual
+                    selectMotivo.value = existingData.motivo_seleccionado;
+                    
+                    // Si es "Otro", llenar el texto
+                    if (existingData.motivo_seleccionado === "Otro (especificar)") {
+                        otroMotivoInput.classList.remove('hidden');
+                        txtOtro.value = existingData.motivo_texto_libre || "";
+                    } else {
+                        otroMotivoInput.classList.add('hidden');
+                    }
+                    
+                    // Llenar comentario
+                    txtComentario.value = existingData.motivo_comentario || "";
+                }
+            } else {
+                modalTitle.textContent = "Gestionar Alerta";
+                submitButton.textContent = "Guardar Gestión";
+                submitButton.classList.add('bg-blue-600', 'hover:bg-blue-700');
+                submitButton.classList.remove('bg-orange-600', 'hover:bg-orange-700');
+                
+                // Cargar datos frescos de la BD para mostrar info
+                try {
+                    const docRef = doc(db, appCollectionPath, alertId);
+                    const docSnap = await getDoc(docRef);
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        modalInfo.innerHTML = `
+                            <strong>Unidad:</strong> ${data.unidad}<br>
+                            <strong>Alerta:</strong> ${data.tipo_alerta}<br>
+                            <strong>Hora:</strong> ${data.dt_evento.toDate().toLocaleString('es-MX')}
+                        `;
+                    } else {
+                        modalInfo.innerHTML = "Error: No se encontró la alerta.";
+                    }
+                } catch (err) {
+                    console.error("Error cargando info en modal:", err);
+                    modalInfo.innerHTML = "Error al cargar datos.";
+                }
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeManagementModal() {
+            document.getElementById('management-modal').classList.add('hidden');
+            document.getElementById('management-form').reset();
+            document.getElementById('motivo-otro-container').classList.add('hidden');
+            document.getElementById('motivo-comentario-container').classList.add('hidden');
+            document.getElementById('modal-alert-info').innerHTML = ""; 
+            isEditingMode = false; // Resetear modo
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const alertId = form.dataset.alertId;
+            const motivoSelect = document.getElementById('motivo-select').value;
+            const motivoOtro = document.getElementById('motivo-otro').value;
+            const motivoComentario = document.getElementById('motivo-comentario').value; 
+            const submitButton = form.querySelector('button[type="submit"]');
+
+            if (!motivoSelect) {
+                alert("Por favor, seleccione un motivo.");
+                return;
+            }
+            if (motivoSelect === "Otro (especificar)" && !motivoOtro) {
+                alert("Por favor, especifique el motivo en el campo 'Otro'.");
+                return;
+            }
+
+            submitButton.disabled = true;
+            submitButton.textContent = "Guardando...";
+
+            const docRef = doc(db, appCollectionPath, alertId);
+            
+            // Objeto base de actualización
+            let updatePayload = {
+                motivo_seleccionado: motivoSelect,
+                motivo_texto_libre: motivoSelect === "Otro (especificar)" ? motivoOtro : "",
+                motivo_comentario: motivoComentario, 
+            };
+
+            // Si NO estamos en modo edición (es una gestión nueva), agregamos los campos de estado y fecha
+            if (!isEditingMode) {
+                updatePayload.estado_gestion = "GESTIONADO";
+                updatePayload.monitorista_uid = userId;
+                updatePayload.dt_gestion = Timestamp.now();
+            }
+            // Si SÍ estamos en modo edición, NO tocamos estado_gestion ni dt_gestion (para mantener el historial original)
+            
+            try {
+                await updateDoc(docRef, updatePayload);
+                
+                console.log("Alerta actualizada con éxito (Modo Edición: " + isEditingMode + ")", alertId);
+                closeManagementModal();
+                
+                // Si estábamos editando desde el detalle del historial, cerramos también ese modal
+                closeHistoryDetailModal();
+
+            } catch (error) {
+                console.error("Error al actualizar documento:", error);
+                alert("Error al guardar. Intente de nuevo.");
+            } finally {
+                submitButton.disabled = false;
+                submitButton.textContent = isEditingMode ? "Guardar Corrección" : "Guardar Gestión";
+            }
+        }
+
+        // --- Pestaña 2: Reportes y Gráficas ---
+        function setupReportGenerators() {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setDate(endDate.getDate() - 7);
+            
+            document.getElementById('report-start-date').valueAsDate = startDate;
+            document.getElementById('report-end-date').valueAsDate = endDate;
+
+            document.getElementById('generate-report-btn').onclick = generateReports;
+            document.getElementById('reset-filters-btn').onclick = resetAndRedrawCharts;
+            
+            document.getElementById('filter-unit').onchange = drawFilteredCharts;
+            document.getElementById('filter-type').onchange = drawFilteredCharts;
+            document.getElementById('filter-reason').onchange = drawFilteredCharts;
+            document.getElementById('filter-geofence').onchange = drawFilteredCharts;
+
+            generateReports();
+        }
+
+        async function generateReports() {
+            const startDateStr = document.getElementById('report-start-date').value;
+            const endDateStr = document.getElementById('report-end-date').value;
+
+            if (!startDateStr || !endDateStr) {
+                alert("Seleccione ambas fechas.");
+                return;
+            }
+
+            const startDate = new Date(startDateStr + "T00:00:00");
+            const endDate = new Date(endDateStr + "T23:59:59");
+            
+            if (endDate < startDate) {
+                alert("La fecha de fin no puede ser anterior a la fecha de inicio.");
+                return;
+            }
+
+            const startTimestamp = Timestamp.fromDate(startDate);
+            const endTimestamp = Timestamp.fromDate(endDate);
+            
+            document.getElementById('report-loading').classList.remove('hidden');
+
+            try {
+                const q = query(
+                    collection(db, appCollectionPath),
+                    where("dt_evento", ">=", startTimestamp),
+                    where("dt_evento", "<=", endTimestamp)
+                );
+
+                const querySnapshot = await getDocs(q);
+                reportDataCache = querySnapshot.docs.map(doc => doc.data());
+                
+                console.log(`Reporte: ${reportDataCache.length} alertas encontradas entre ${startDateStr} y ${endDateStr}`);
+                
+                populateFilters(reportDataCache);
+                drawFilteredCharts();
+
+            } catch (error) {
+                console.error("Error generando reporte (¿falta índice?):", error);
+                alert("Error al generar reporte.\n\nFirestore podría requerir un índice para este rango de fechas.");
+            } finally {
+                document.getElementById('report-loading').classList.add('hidden');
+            }
+        }
+        
+        function populateFilters(data) {
+            const unitSelect = document.getElementById('filter-unit');
+            const typeSelect = document.getElementById('filter-type');
+            const reasonSelect = document.getElementById('filter-reason');
+            const geofenceSelect = document.getElementById('filter-geofence');
+            
+            const units = new Set();
+            const types = new Set();
+            const reasons = new Set();
+            const geofences = new Set();
+            
+            data.forEach(alert => {
+                if(alert.unidad) units.add(alert.unidad);
+                
+                const tipo = getNormalizedType(alert.tipo_alerta);
+                if(tipo) types.add(tipo);
+                
+                if(alert.motivo_seleccionado) reasons.add(alert.motivo_seleccionado);
+                
+                const geocerca = getProcessedGeofence(alert, false); 
+                if(geocerca) geofences.add(geocerca);
+            });
+            
+            const populateSelect = (select, items) => {
+                const currentVal = select.value;
+                select.innerHTML = '<option value="todos">-- Todos --</option>';
+                [...items].sort().forEach(item => {
+                    select.innerHTML += `<option value="${item}">${item}</option>`;
+                });
+                select.value = currentVal; 
+            };
+            
+            populateSelect(unitSelect, units);
+            populateSelect(typeSelect, types);
+            populateSelect(reasonSelect, reasons);
+            populateSelect(geofenceSelect, geofences);
+        }
+        
+        function resetAndRedrawCharts() {
+            document.getElementById('filter-unit').value = "todos";
+            document.getElementById('filter-type').value = "todos";
+            document.getElementById('filter-reason').value = "todos";
+            document.getElementById('filter-geofence').value = "todos";
+            drawFilteredCharts();
+        }
+        
+        function drawFilteredCharts() {
+            const unitFilter = document.getElementById('filter-unit').value;
+            const typeFilter = document.getElementById('filter-type').value;
+            const reasonFilter = document.getElementById('filter-reason').value;
+            const geofenceFilter = document.getElementById('filter-geofence').value;
+            
+            const filteredData = reportDataCache.filter(alert => {
+                const tipo = getNormalizedType(alert.tipo_alerta);
+                const geocerca = getProcessedGeofence(alert, false);
+                
+                if (unitFilter !== 'todos' && alert.unidad !== unitFilter) return false;
+                if (typeFilter !== 'todos' && tipo !== typeFilter) return false;
+                if (reasonFilter !== 'todos' && alert.motivo_seleccionado !== reasonFilter) return false;
+                if (geofenceFilter !== 'todos' && geocerca !== geofenceFilter) return false;
+                
+                return true;
+            });
+            
+            console.log(`Dibujando gráficas con ${filteredData.length} alertas filtradas.`);
+            processDataForCharts(filteredData);
+        }
+        
+        function processDataForCharts(data) {
+            const countsByType = {};
+            const countsByReason = {};
+            const countsByGeofence = {}; 
+            const countsByUnit = {}; 
+            const heatmapData = [];  
+            
+            for (let d = 0; d < 7; d++) { 
+                for (let h = 0; h < 24; h++) {
+                    heatmapData.push({d: d, h: h, v: 0});
+                }
+            }
+            
+            data.forEach(alert => {
+                const tipo = getNormalizedType(alert.tipo_alerta);
+                countsByType[tipo] = (countsByType[tipo] || 0) + 1;
+
+                if (alert.estado_gestion === "GESTIONADO" && alert.motivo_seleccionado) {
+                    const motivo = alert.motivo_seleccionado;
+                    countsByReason[motivo] = (countsByReason[motivo] || 0) + 1;
+                }
+                
+                let geocerca = getProcessedGeofence(alert, false); 
+                if (geocerca) {
+                    countsByGeofence[geocerca] = (countsByGeofence[geocerca] || 0) + 1;
+                }
+                
+                if(alert.unidad) {
+                    countsByUnit[alert.unidad] = (countsByUnit[alert.unidad] || 0) + 1;
+                }
+                
+                const date = alert.dt_evento.toDate();
+                const dayOfWeek = date.getDay(); 
+                const hour = date.getHours(); 
+                const bin = heatmapData.find(p => p.d === dayOfWeek && p.h === hour);
+                if(bin) bin.v++;
+            });
+            
+            // --- Gráfica 1 (Tipos) ---
+            const chart1Ctx = document.getElementById('chart-alerts-by-type').getContext('2d');
+            if (charts.chart1) charts.chart1.destroy(); 
+            charts.chart1 = new Chart(chart1Ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(countsByType),
+                    datasets: [{
+                        label: 'Nº de Alertas',
+                        data: Object.values(countsByType),
+                        backgroundColor: ['#EF4444', '#F97316', '#EAB308', '#84CC16', '#22C55E', '#14B8A6'],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'top' },
+                        title: { display: true, text: 'Alertas por Tipo' }
+                    }
+                }
+            });
+
+            // --- Gráfica 2 (Motivos) ---
+            const chart2Ctx = document.getElementById('chart-alerts-by-reason').getContext('2d');
+            if (charts.chart2) charts.chart2.destroy();
+            charts.chart2 = new Chart(chart2Ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(countsByReason),
+                    datasets: [{
+                        label: 'Nº de Gestiones',
+                        data: Object.values(countsByReason),
+                        backgroundColor: '#3B82F6',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y', 
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: 'Motivos de Alertas Gestionadas' }
+                    },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+            
+            // --- Gráfica 3 (Geocercas) ---
+            const chart3Ctx = document.getElementById('chart-alerts-by-geofence').getContext('2d');
+            if (charts.chart3) charts.chart3.destroy();
+            charts.chart3 = new Chart(chart3Ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(countsByGeofence),
+                    datasets: [{
+                        label: 'Nº de Eventos',
+                        data: Object.values(countsByGeofence),
+                        backgroundColor: '#8B5CF6',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y', 
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: 'Top Geocercas/Rutas con Eventos' }
+                    },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+            
+            // --- Gráfica 4 (Unidades) ---
+            const chart4Ctx = document.getElementById('chart-alerts-by-unit').getContext('2d');
+            if (charts.chart4) charts.chart4.destroy();
+            charts.chart4 = new Chart(chart4Ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(countsByUnit),
+                    datasets: [{
+                        label: 'Nº de Eventos',
+                        data: Object.values(countsByUnit),
+                        backgroundColor: '#10B981',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    indexAxis: 'y', 
+                    plugins: {
+                        legend: { display: false },
+                        title: { display: true, text: 'Top Unidades con Eventos' }
+                    },
+                    scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+                }
+            });
+            
+            // --- Gráfica 5 (Heatmap) ---
+            const chart5Ctx = document.getElementById('chart-heatmap').getContext('2d');
+            if (charts.chart5) charts.chart5.destroy();
+            charts.chart5 = new Chart(chart5Ctx, {
+                type: 'matrix',
+                data: {
+                    datasets: [{
+                        label: 'Eventos por Hora/Día',
+                        data: heatmapData.filter(d => d.v > 0), 
+                        backgroundColor: (ctx) => {
+                            const value = ctx.raw.v;
+                            if (value === 0) return 'rgba(0, 0, 0, 0)';
+                            const maxVal = d3.max(heatmapData, d => d.v);
+                            const alpha = maxVal > 1 ? (value - 1) / (maxVal - 1) : 1.0;
+                            return `rgba(239, 68, 68, ${alpha * 0.8 + 0.2})`; 
+                        },
+                        width: ({chart}) => (chart.chartArea || {}).width / 24 - 1,
+                        height: ({chart}) => (chart.chartArea || {}).height / 7 - 1,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: { display: true, text: 'Mapa de Calor: Eventos por Día y Hora' },
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (ctx) => DIAS_SEMANA[ctx[0].raw.d],
+                                label: (ctx) => `Hora: ${ctx[0].raw.h}:00, Eventos: ${ctx[0].raw.v}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'category',
+                            labels: HORAS_DIA,
+                            offset: true,
+                            grid: { display: false }
+                        },
+                        y: {
+                            type: 'category',
+                            labels: DIAS_SEMANA,
+                            offset: true,
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- Pestaña 3: Historial de Alertas ---
+        function loadHistoryAlerts() {
+            if (historyListener) return; 
+
+            const historyTableBody = document.getElementById('history-table-body');
+            const noHistoryMessage = document.getElementById('no-history-message');
+            
+            const q = query(
+                collection(db, appCollectionPath),
+                where("estado_gestion", "==", "GESTIONADO"),
+                orderBy("dt_gestion", "desc"),
+                limit(20)
+            );
+
+            console.log("Iniciando listener de historial...");
+            historyListener = onSnapshot(q, (snapshot) => {
+                if (snapshot.empty) {
+                    historyTableBody.innerHTML = ''; 
+                    noHistoryMessage.classList.remove('hidden');
+                    return;
+                }
+                
+                noHistoryMessage.classList.add('hidden');
+                historyTableBody.innerHTML = ''; 
+                
+                snapshot.forEach(doc => {
+                    const alert = { id: doc.id, ...doc.data() };
+                    const tr = document.createElement('tr');
+                    tr.className = "hover:bg-gray-50 cursor-pointer";
+                    
+                    const tipoNormalizado = getNormalizedType(alert.tipo_alerta);
+                    
+                    tr.innerHTML = `
+                        <td class="p-3 text-sm text-gray-700">${alert.dt_gestion ? alert.dt_gestion.toDate().toLocaleString('es-MX') : 'N/A'}</td>
+                        <td class="p-3 text-sm text-gray-700">${alert.dt_evento.toDate().toLocaleString('es-MX')}</td>
+                        <td class="p-3 text-sm font-medium text-gray-900">${alert.unidad}</td>
+                        <td class="p-3 text-sm text-gray-600">${tipoNormalizado}</td>
+                        <td class="p-3 text-sm font-medium text-blue-700">${alert.motivo_seleccionado}</td>
+                    `;
+                    
+                    tr.addEventListener('click', () => openHistoryDetailModal(alert));
+                    historyTableBody.appendChild(tr);
+                });
+
+            }, (error) => {
+                console.error("Error en listener de Historial:", error);
+                noHistoryMessage.textContent = "Error al cargar historial. Firestore podría requerir un índice. Revise la consola (F12) y haga clic en el enlace del error para crearlo.";
+                noHistoryMessage.classList.remove('hidden');
+            });
+        }
+        
+        function getNormalizedType(tipo_alerta_raw) {
+            const tipo = (String(tipo_alerta_raw) || "").toUpperCase(); 
+            if (tipo.includes("DETENIDO 10 MIN")) return "DETENIDO 10 MIN";
+            if (tipo.includes("DESVIO DE RUTA")) return "DESVÍO DE RUTA";
+            if (tipo.includes("SALIDA GEOCERCA")) return "SALIDA DE GEOCERCA";
+            if (tipo.length > 0) return "OTRA ALERTA";
+            return "ALERTA N/A";
+        }
+        
+        function getProcessedGeofence(alert, allowNA = false) {
+             let geocerca = alert.geocerca;
+             const tipo = (alert.tipo_alerta || "").toUpperCase();
+             const tipoNormalizado = alert.tipo_alerta_normalizado || getNormalizedType(alert.tipo_alerta);
+
+             if (tipoNormalizado && geocerca && geocerca.toUpperCase() !== 'N/A') {
+                 return geocerca;
+             }
+
+             try {
+                if (tipoNormalizado === 'DESVÍO DE RUTA') {
+                    const matches = alert.tipo_alerta.match(/\((.*?)\)/);
+                    if (matches && matches[1]) {
+                        return matches[1]; 
+                    }
+                }
+                
+                if (tipoNormalizado === 'DETENIDO 10 MIN') {
+                    const partes = tipo.split(' ');
+                    let palabrasGeocerca = [];
+                    for (const palabra of partes) {
+                        if (palabra === 'DETENIDO') break;
+                        palabrasGeocerca.push(palabra);
+                    }
+                    if (palabrasGeocerca.length > 0) {
+                        return palabrasGeocerca.join(' '); 
+                    }
+                }
+             } catch (e) {
+                 console.warn("No se pudo re-calcular la geocerca para el dato antiguo:", alert.id);
+             }
+
+             if(tipoNormalizado === 'SALIDA DE GEOCERCA' && geocerca && geocerca.toUpperCase() !== 'N/A') {
+                 return geocerca;
+             }
+             
+             return allowNA ? "N/A" : null;
+        }
+        
+        function generateWhatsAppMessage(alert) {
+            const tipoNormalizado = alert.tipo_alerta_normalizado || getNormalizedType(alert.tipo_alerta);
+            let geocercaDisplay = getProcessedGeofence(alert, true) || "N/A";
+            
+            const fechaEvento = alert.dt_evento.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
+            const horaEvento = alert.dt_evento.toDate().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+
+            let box_icon = "🚨"; 
+            if (tipoNormalizado.includes("DETENIDO")) box_icon = "🛑";
+            else if (tipoNormalizado.includes("DESVÍO")) box_icon = "❌";
+            else if (tipoNormalizado.includes("SALIDA")) box_icon = "🚷";
+            
+            let text = ``;
+            text += `${box_icon} *ALERTA GPS GORATRACK* ${box_icon}\n\n`;
+            text += `*ALERTA: ${tipoNormalizado}*\n`;
+            text += `🚗 *UNIDAD:* ${alert.unidad}\n\n`;
+            
+            text += `*DETALLES:*\n`;
+            text += `La unidad ${alert.unidad} activó la alerta: *${alert.tipo_alerta}* a las ${horaEvento} del ${fechaEvento}.\n\n`;
+            
+            text += `📍 *Coordenadas:* ${alert.latitud.toFixed(5)}, ${alert.longitud.toFixed(5)}\n`;
+            text += `🗺️ *Geocerca/Ruta:* ${geocercaDisplay}\n\n`;
+
+            text += `*GESTIÓN:*\n`;
+            let motivoText = 'N/A';
+            if (alert.motivo_seleccionado === 'Otro (especificar)') {
+                motivoText = `Otro: _${alert.motivo_texto_libre || '(no especificado)'}_`;
+            } else {
+                motivoText = alert.motivo_seleccionado || 'N/A';
+            }
+            text += `📝 *Motivo:* ${motivoText}\n`;
+
+            if (alert.motivo_comentario && alert.motivo_comentario.trim() !== '') {
+                text += `💬 *Comentario:* _${alert.motivo_comentario.trim()}_`;
+            }
+
+            return `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+        }
+
+        function handleShareAlert(alert) {
+            console.log("Generando enlace de WhatsApp para:", alert.id);
+            const whatsappUrl = generateWhatsAppMessage(alert);
+            window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+        }
+        
+        // --- Modal de Detalle de Historial (MEJORA V16.0: Botón de Edición) ---
+        function openHistoryDetailModal(alert) {
+            const modal = document.getElementById('history-detail-modal');
+            
+            const tipoNormalizado = alert.tipo_alerta_normalizado || getNormalizedType(alert.tipo_alerta);
+            let geocercaDisplay = getProcessedGeofence(alert, true) || "N/A"; 
+
+            let box_color = "#cc0000"; 
+            let box_icon = "🚨"; 
+            if (tipoNormalizado.includes("DETENIDO")) {
+                box_color = "#cc0000";
+                box_icon = "🛑";
+            } else if (tipoNormalizado.includes("DESVÍO")) {
+                box_color = "#8b0000";
+                box_icon = "❌";
+            } else if (tipoNormalizado.includes("SALIDA")) {
+                box_color = "#ff8c00";
+                box_icon = "🚷";
+            }
+            
+            const fechaEvento = alert.dt_evento.toDate().toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
+            const horaEvento = alert.dt_evento.toDate().toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit' });
+
+            let motivoHtml = '';
+            if (alert.motivo_seleccionado === 'Otro (especificar)') {
+                motivoHtml = `
+                    <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                        <strong>Motivo:</strong> Otro (especificar): 
+                        <em class="text-gray-700">${alert.motivo_texto_libre || '(no especificado)'}</em>
+                    </p>
+                `;
+            } else {
+                 motivoHtml = `
+                    <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                        <strong>Motivo:</strong> ${alert.motivo_seleccionado || 'N/A'}
+                    </p>
+                `;
+            }
+            
+            if (alert.motivo_comentario && alert.motivo_comentario.trim() !== '') {
+                motivoHtml += `
+                    <p style="font-size: 16px; color: #333; line-height: 1.6; margin-top: 15px;">
+                        <strong>Comentario:</strong> ${alert.motivo_comentario}
+                    </p>
+                `;
+            }
+
+            document.getElementById('history-detail-content').innerHTML = `
+                <!-- Encabezado -->
+                <div class="bg-blue-800 p-5 text-center rounded-t-lg relative">
+                    <img src="https://imgfz.com/i/y4CNaE5.png" alt="GORATRACK MÉXICO" style="max-width: 200px; height: auto; display: block; margin: 0 auto 10px;">
+                    <h1 class="text-white text-xl font-bold">NOTIFICACIÓN DE RASTREO GPS</h1>
+                    
+                    <!-- Botón de Editar en la esquina -->
+                    <button id="edit-history-btn" class="absolute top-4 right-4 bg-white text-blue-800 p-2 rounded-full shadow hover:bg-gray-100 transition" title="Corregir Gestión">
+                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                             <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                         </svg>
+                    </button>
+                </div>
+                
+                <!-- Contenido -->
+                <div class="p-6">
+                    <div class="border border-yellow-500 bg-yellow-50 p-3 rounded-md mb-4">
+                        <h2 class="text-lg font-bold text-center" style="color: ${box_color};">
+                            ${box_icon} ALERTA: ${tipoNormalizado}
+                        </h2>
+                        <h3 class="text-xl font-bold text-gray-800 text-center mt-1">
+                            UNIDAD: ${alert.unidad}
+                        </h3>
+                    </div>
+                    
+                    <h4 class="text-blue-700 font-semibold border-b-2 border-blue-700 pb-1 mb-3">
+                        DETALLES COMPLETOS DE LA ALERTA
+                    </h4>
+                    
+                    <p style="font-size: 16px; color: #333; line-height: 1.6;">
+                        La unidad <strong>${alert.unidad}</strong> activó la alerta: 
+                        <strong style="color: ${box_color};">${alert.tipo_alerta}</strong> 
+                        a las ${horaEvento} del ${fechaEvento}.
+                    </p>
+                    
+                    <p class="text-sm text-gray-600 mt-4 pt-2 border-t">
+                        La alerta ocurrió en las coordenadas: <strong>${alert.latitud.toFixed(5)}, ${alert.longitud.toFixed(5)}</strong>.
+                        <br>Velocidad reportada: <strong>${alert.velocidad} kph</strong>.
+                        <br>Geocerca/Ruta: <strong>${geocercaDisplay}</strong>.
+                    </p>
+                    
+                    <hr class="my-4">
+                    
+                    <!-- Motivo de Gestión -->
+                    ${motivoHtml}
+                </div>
+            `;
+            
+            // Asignar evento al botón de compartir
+            const shareBtn = document.getElementById('share-history-detail-btn');
+            shareBtn.onclick = () => handleShareAlert(alert); 
+
+            // Asignar evento al botón de EDITAR (V16.0)
+            const editBtn = document.getElementById('edit-history-btn');
+            editBtn.onclick = () => {
+                // Abrir modal de gestión en MODO EDICIÓN
+                // Pasamos 'true' como segundo argumento, y el objeto 'alert' completo como tercero
+                openManagementModal(alert.id, true, alert);
+            };
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeHistoryDetailModal() {
+            document.getElementById('history-detail-modal').classList.add('hidden');
+            document.getElementById('history-detail-content').innerHTML = '';
+        }
+
+
+        // --- Punto de Entrada Principal ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeAppLogic();
+            document.getElementById('close-modal-btn').onclick = closeManagementModal;
+            document.getElementById('management-form').onsubmit = handleFormSubmit;
+            document.getElementById('close-history-detail-modal-btn').onclick = closeHistoryDetailModal;
+        });
+
+    </script>
+
+    <style>
+        .modal-backdrop { background-color: rgba(0, 0, 0, 0.5); }
+        #history-detail-content p {
+            font-family: Arial, sans-serif;
+        }
+    </style>
+</head>
+
+<body class="h-full bg-gray-100 font-sans">
+    
+    <audio id="notification-sound" preload="auto">
+        <source src="https://www.myinstants.com/media/sounds/spongebob-fail.mp3" type="audio/mpeg">
+    </audio>
+
+    <div class="min-h-full">
+        <!-- Encabezado -->
+        <header class="bg-white shadow-sm">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                <div class="flex h-16 justify-between items-center">
+                    <div class="flex items-center">
+                        <img src="https://imgfz.com/i/y4CNaE5.png" alt="Logo" class="h-10 w-auto mr-3">
+                        <h1 class="text-2xl font-bold text-blue-600">Dashboard de Alertas</h1>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                         <div id="notification-bell" class="relative p-1 rounded-full text-gray-400">
+                             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                 <path stroke-linecap="round" stroke-linejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.017 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+                             </svg>
+                             <span id="notification-dot" class="hidden absolute top-1 right-1 block w-2 h-2 bg-red-500 rounded-full"></span>
+                         </div>
+                         <span id="auth-status" class="text-xs text-gray-500">Inicializando...</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Contenido Principal -->
+        <main class="py-10">
+            <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+                
+                <div class="mb-6">
+                    <div class="sm:block">
+                        <nav class="flex space-x-4 rounded-lg bg-gray-200 p-2" aria-label="Tabs">
+                            <button data-tab="pendientes" class="px-3 py-2 font-medium text-sm rounded-md text-gray-700 hover:bg-gray-300">
+                                Alertas Pendientes
+                            </button>
+                            <button data-tab="historial" class="px-3 py-2 font-medium text-sm rounded-md text-gray-700 hover:bg-gray-300">
+                                Historial
+                            </button>
+                            <button data-tab="reportes" class="px-3 py-2 font-medium text-sm rounded-md text-gray-700 hover:bg-gray-300">
+                                Reportes y Gráficas
+                            </button>
+                        </nav>
+                    </div>
+                </div>
+
+                <!-- Contenido Pestaña 1: Alertas Pendientes -->
+                <div id="content-pendientes" data-tab-content class="hidden">
+                    <div class="bg-white shadow rounded-lg overflow-hidden">
+                        <div class="px-6 py-4 border-b">
+                            <h2 class="text-lg font-medium leading-6 text-gray-900">Alertas Pendientes de Gestión (DETENIDO / DESVÍO / SALIDA GEOCERCA)</h2>
+                            <p class="mt-1 text-sm text-gray-500">Alertas en tiempo real que requieren acción del monitorista.</p>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha/Hora</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unidad</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alerta</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Geocerca/Ruta</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ubicación</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="alerts-table-body" class="bg-white divide-y divide-gray-200">
+                                    <!-- Filas insertadas por JS -->
+                                </tbody>
+                            </table>
+                            <div id="no-alerts-message" class="hidden p-6 text-center text-gray-500">
+                                No hay alertas pendientes de gestión.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Contenido Pestaña 3: Historial -->
+                <div id="content-historial" data-tab-content class="hidden">
+                    <div class="bg-white shadow rounded-lg overflow-hidden">
+                        <div class="px-6 py-4 border-b">
+                            <h2 class="text-lg font-medium leading-6 text-gray-900">Historial de Alertas Gestionadas</h2>
+                            <p class="mt-1 text-sm text-gray-500">Últimas 20 alertas que ya han sido gestionadas. Haz clic en una fila para ver el detalle.</p>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha Gestión</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha Evento</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unidad</th>
+                                        <th classs="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                                        <th class="p-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-table-body" class="bg-white divide-y divide-gray-200">
+                                    <!-- Filas insertadas por JS -->
+                                </tbody>
+                            </table>
+                            <div id="no-history-message" class="hidden p-6 text-center text-gray-500">
+                                No hay alertas gestionadas en el historial.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Contenido Pestaña 2: Reportes y Gráficas -->
+                <div id="content-reportes" data-tab-content class="hidden">
+                    <div class="bg-white shadow rounded-lg p-6 mb-6">
+                        <h2 class="text-lg font-medium leading-6 text-gray-900">Generador de Reportes</h2>
+                        
+                        <div class="relative mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 items-end pb-4 border-b border-gray-200">
+                            <div>
+                                <label for="report-start-date" class="block text-sm font-medium text-gray-700">Fecha de Inicio</label>
+                                <input type="date" id="report-start-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="report-end-date" class="block text-sm font-medium text-gray-700">Fecha de Fin</label>
+                                <input type="date" id="report-end-date" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <button id="generate-report-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md shadow-sm">
+                                    Generar Reporte
+                                </button>
+                            </div>
+                            <div id="report-loading" class="hidden absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
+                                <svg class="animate-spin h-6 w-6 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                            <div>
+                                <label for="filter-unit" class="block text-sm font-medium text-gray-700">Unidad (GPS)</label>
+                                <select id="filter-unit" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    <option value="todos">-- Todos --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="filter-type" class="block text-sm font-medium text-gray-700">Tipo de Alerta</label>
+                                <select id="filter-type" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    <option value="todos">-- Todos --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="filter-reason" class="block text-sm font-medium text-gray-700">Motivo de Gestión</label>
+                                <select id="filter-reason" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    <option value="todos">-- Todos --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="filter-geofence" class="block text-sm font-medium text-gray-700">Geocerca/Ruta</label>
+                                <select id="filter-geofence" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                                    <option value="todos">-- Todos --</option>
+                                </select>
+                            </div>
+                            <div>
+                                <button id="reset-filters-btn" class="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-md shadow-sm">
+                                    Limpiar Filtros
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-white shadow rounded-lg p-6 mb-6">
+                        <canvas id="chart-heatmap" style="height: 250px;"></canvas>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white shadow rounded-lg p-6">
+                            <canvas id="chart-alerts-by-type"></canvas>
+                        </div>
+                        <div class="bg-white shadow rounded-lg p-6">
+                            <canvas id="chart-alerts-by-reason"></canvas>
+                        </div>
+                        <div class="bg-white shadow rounded-lg p-6">
+                            <canvas id="chart-alerts-by-unit"></canvas>
+                        </div>
+                        <div class="bg-white shadow rounded-lg p-6">
+                            <canvas id="chart-alerts-by-geofence"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal para Gestión de Alerta -->
+    <div id="management-modal" class="modal-backdrop hidden fixed inset-0 z-10 overflow-y-auto flex items-center justify-center">
+        <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        
+        <div class="relative bg-white rounded-lg shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full">
+            <form id="management-form" data-alert-id="">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900" id="modal-title">
+                        Gestionar Alerta
+                    </h3>
+                    <div class="mt-4 space-y-4">
+                        <div id="modal-alert-info" class="text-sm text-gray-600 mb-4 p-3 bg-gray-50 rounded-md border border-gray-200">
+                        </div>
+                        <p class="text-sm text-gray-600">
+                            Seleccione el motivo de la alerta reportado por el supervisor (Gárgola).
+                        </p>
+                        <div>
+                            <label for="motivo-select" class="block text-sm font-medium text-gray-700">Motivo de la alerta</label>
+                            <select id="motivo-select" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" required>
+                            </select>
+                        </div>
+                        <div id="motivo-otro-container" class="hidden">
+                            <label for="motivo-otro" class="block text-sm font-medium text-gray-700">Especifique el motivo:</label>
+                            <textarea id="motivo-otro" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"></textarea>
+                        </div>
+                        <div id="motivo-comentario-container" class="hidden">
+                            <label for="motivo-comentario" class="block text-sm font-medium text-gray-700">Comentario (Opcional)</label>
+                            <textarea id="motivo-comentario" rows="2" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm" placeholder="Ej: El Lic. Mario se los autorizó"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                    <button type="submit" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm">
+                        Guardar Gestión
+                    </button>
+                    <button type="button" id="close-modal-btn" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                        Cancelar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Modal para Detalle de Historial -->
+    <div id="history-detail-modal" class="modal-backdrop hidden fixed inset-0 z-20 overflow-y-auto flex items-center justify-center">
+        <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+            <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+        </div>
+        
+        <div class="relative bg-white rounded-lg shadow-xl transform transition-all sm:my-8 sm:max-w-lg sm:w-full overflow-hidden">
+            <div id="history-detail-content"></div>
+            <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                <button type="button" id="close-history-detail-modal-btn" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    Cerrar
+                </button>
+                <button type="button" id="share-history-detail-btn" class="mt-3 w-full inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-green-500 text-base font-medium text-white hover:bg-green-600 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+                    <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.598-3.82-1.598-5.946C.146 5.348 5.494.002 11.848 0c6.354 0 11.7 5.346 11.7 11.854 0 6.508-5.346 11.854-11.7 11.854-2.2 0-4.28-.6-6.09-1.644L.057 24zM11.848 2.31c5.242 0 9.474 4.232 9.474 9.474s-4.232 9.474-9.474 9.474c-1.857 0-3.59-.538-5.06-1.484l-.35-.207-3.75 1.04.08-.104 1.07-3.665-.23-.37c-1.02-1.52-1.57-3.34-1.57-5.232 0-5.242 4.232-9.474 9.474-9.474zm5.19 10.17c-.24-.12-.7-.35-1.04-.41-.34-.06-.59-.06-.84.24-.24.3-.48.71-.59.83-.11.12-.23.12-.47.06-.24-.06-1.02-.37-1.93-1.18-.72-.64-1.19-1.43-1.31-1.67-.12-.24-.01-.36.11-.48.1-.11.23-.26.34-.4.11-.12.17-.23.26-.38.09-.17.04-.3-.02-.42-.06-.12-.59-1.42-.8-1.95-.21-.52-.43-.45-.58-.45-.14-.01-.3 0-.47 0-.17 0-.42.06-.66.3.24.24-.89.83-1.09 2.07-.2 1.24.64 2.4 1.02 2.82.38.42 1.34 1.98 3.3 2.82.5.21.9.33 1.2.42.3.09.57.07.78.05.24-.03.0.76-.31.87-.61.11-.3.11-.55.08-.61-.04-.06-.15-.09-.33-.18z"></path></svg>
+                    Compartir
+                </button>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

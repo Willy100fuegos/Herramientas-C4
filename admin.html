@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador Espejo | C4</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-slate-100 p-4 md:p-8 min-h-screen">
+
+    <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200">
+        <!-- Header -->
+        <div class="bg-slate-900 p-6 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-white">Cuentas Espejo</h1>
+                <p class="text-slate-400 text-sm">Panel de Control C4</p>
+            </div>
+            <img src="https://tuweb.com/img/logo.png" alt="Logo" class="h-10 bg-white rounded px-2 py-1">
+        </div>
+
+        <div class="p-6">
+            <!-- Buscador -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                <div>
+                    <label class="block text-slate-700 font-bold mb-2 text-sm">1. Filtrar Unidades</label>
+                    <input type="text" id="searchInput" placeholder="Buscar unidad..." 
+                           class="w-full p-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm">
+                </div>
+                <div class="text-right flex flex-col justify-end pb-1">
+                    <span class="text-xs text-slate-500 font-semibold uppercase">Seleccionadas</span>
+                    <div class="text-2xl font-bold text-blue-600" id="selectionCount">0</div>
+                </div>
+            </div>
+
+            <!-- Lista -->
+            <div id="unitsContainer" class="h-96 overflow-y-auto border border-slate-200 rounded-lg p-2 bg-slate-50 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 mb-6">
+                <p class="text-center col-span-full py-10 text-gray-400">Cargando unidades...</p>
+            </div>
+
+            <!-- Configuración -->
+            <div class="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="md:col-span-2">
+                        <label class="block text-slate-700 font-bold mb-2 text-sm">2. Vigencia</label>
+                        <div class="flex gap-2">
+                            <select id="durationSelect" class="w-full p-3 border border-slate-300 rounded-lg bg-white text-sm">
+                                <option value="12">12 Horas</option>
+                                <option value="24" selected>24 Horas</option>
+                                <option value="72">3 Días</option>
+                                <option value="168">1 Semana</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <button onclick="generateLink()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition transform active:scale-95">
+                            Generar Enlace
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resultado -->
+            <div id="resultArea" class="hidden mt-6 bg-green-50 border border-green-200 rounded-lg p-6 text-center">
+                <h3 class="text-green-800 font-bold text-lg mb-2">¡Enlace Listo!</h3>
+                <div class="flex items-center gap-2 justify-center max-w-2xl mx-auto">
+                    <input type="text" id="generatedLink" readonly class="w-full p-3 border border-green-300 rounded-lg bg-white text-sm text-gray-600 font-mono select-all">
+                    <button onclick="copyLink()" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 font-bold">Copiar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allUnits = [];
+        const selectedImeis = new Set(); // Memoria de selección
+
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('backend.php?action=get_all_units')
+                .then(r => r.json())
+                .then(data => {
+                    allUnits = data.sort((a,b) => (a.name||'').localeCompare(b.name||''));
+                    renderUnits(allUnits);
+                });
+
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                renderUnits(allUnits.filter(u => (u.name||'').toLowerCase().includes(term)));
+            });
+        });
+
+        function renderUnits(units) {
+            const container = document.getElementById('unitsContainer');
+            if(!units.length) { container.innerHTML = '<p class="col-span-full text-center py-4 text-gray-400">Sin resultados.</p>'; return; }
+            
+            const badges = { 'centurion':'bg-blue-100 text-blue-800', 'uipsa':'bg-purple-100 text-purple-800', 'etf':'bg-emerald-100 text-emerald-800' };
+
+            container.innerHTML = units.map(u => {
+                const isChecked = selectedImeis.has(String(u.imei));
+                const activeClass = isChecked ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200';
+                // Limpieza de nombre CRÍTICA
+                const safeName = (u.name || `Unidad ${u.imei}`).replace(/"/g, '&quot;');
+                const badge = badges[u.account_source] || 'bg-gray-100';
+
+                return `
+                <label class="flex items-center p-3 rounded-lg border cursor-pointer transition select-none group ${activeClass}" id="lbl-${u.imei}">
+                    <input type="checkbox" class="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500" 
+                           value="${u.imei}" 
+                           data-account="${u.account_source}" 
+                           data-name="${safeName}" 
+                           ${isChecked ? 'checked' : ''}
+                           onchange="toggle('${u.imei}', this)">
+                    <div class="ml-3 overflow-hidden">
+                        <p class="text-sm font-semibold text-slate-700 truncate">${safeName}</p>
+                        <span class="text-[10px] ${badge} px-1.5 rounded uppercase font-bold">${u.account_source}</span>
+                    </div>
+                </label>`;
+            }).join('');
+        }
+
+        function toggle(imei, cb) {
+            const lbl = document.getElementById(`lbl-${imei}`);
+            if(cb.checked) {
+                selectedImeis.add(String(imei));
+                lbl.classList.add('border-blue-500', 'bg-blue-50', 'ring-1', 'ring-blue-500');
+                lbl.classList.remove('border-slate-200');
+            } else {
+                selectedImeis.delete(String(imei));
+                lbl.classList.remove('border-blue-500', 'bg-blue-50', 'ring-1', 'ring-blue-500');
+                lbl.classList.add('border-slate-200');
+            }
+            document.getElementById('selectionCount').innerText = selectedImeis.size;
+        }
+
+        function generateLink() {
+            // AQUÍ ESTÁ LA MAGIA: Recolectamos el nombre REAL de la lista completa usando la memoria
+            const selectedData = allUnits.filter(u => selectedImeis.has(String(u.imei))).map(u => ({
+                imei: u.imei,
+                account: u.account_source,
+                name: u.name || `Unidad ${u.imei}` // Aseguramos que lleve nombre
+            }));
+
+            if(!selectedData.length) return alert("Selecciona al menos una unidad.");
+
+            const btn = document.querySelector('button[onclick="generateLink()"]');
+            btn.innerText = "Generando..."; btn.disabled = true;
+
+            fetch('backend.php?action=create_link', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    imeis: selectedData, 
+                    expiration_hours: document.getElementById('durationSelect').value 
+                })
+            })
+            .then(r => r.json())
+            .then(res => {
+                btn.innerText = "Generar Enlace"; btn.disabled = false;
+                if(res.success) {
+                    document.getElementById('resultArea').classList.remove('hidden');
+                    document.getElementById('generatedLink').value = res.link;
+                } else alert("Error: " + res.error);
+            });
+        }
+
+        function copyLink() {
+            document.getElementById("generatedLink").select();
+            document.execCommand("copy");
+            alert("Enlace copiado.");
+        }
+    </script>
+</body>
+</html>
