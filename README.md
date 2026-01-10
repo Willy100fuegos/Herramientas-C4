@@ -10,7 +10,7 @@
 Esta plataforma actúa como una **capa de inteligencia (Middleware)** sobre la plataforma comercial de rastreo GPS (Goratrack). Su función es resolver las limitaciones nativas del proveedor, permitiendo:
 
 1.  **Interoperabilidad:** Crear enlaces espejo temporales ("Uber-like links") para clientes externos sin crear usuarios en la plataforma base.
-2.  **Alertamiento SOAR:** Centralizar alertas críticas (SOS, Geocercas) en un dashboard de tiempo real con aviso sonoro.
+2.  **Alertamiento SOAR:** Centralizar alertas críticas (SOS, Geocercas) en un dashboard de tiempo real con aviso sonoro y visual.
 3.  **Reportería Forense:** Generar mapas de calor y análisis de velocidad que la plataforma nativa no ofrece.
 
 ---
@@ -51,13 +51,42 @@ El sistema utiliza un enfoque de **Microservicios Híbridos**:
 
 ---
 
-### 📂 Estructura de Archivos Clave
+## 👨‍💻 Guía de Despliegue (Para Desarrolladores)
 
-* `dashboard.html`: Interfaz principal del monitorista (Conectada a Firebase).
-* `gps_proxy_unified.php`: Gateway que unifica la autenticación de múltiples cuentas de rastreo.
-* `mirror.php`: Visor público ligero para los enlaces espejo.
-* `api_generar_manual.php`: Motor de procesamiento masivo de coordenadas para reportes de velocidad.
+Esta suite requiere configuración tanto en servidor web (PHP) como en servicios cloud (Firebase/Google).
+
+### 1. Requisitos del Sistema
+* Servidor LAMP (Linux, Apache, MySQL, PHP 8+).
+* Extensiones PHP: `curl`, `json`, `mbstring`.
+* Cuenta de Firebase (Para el módulo de tiempo real).
+* API Key del proveedor de rastreo (Goratrack/Navixy/Wialon).
+
+### 2. Configuración de Archivos Clave
+El código ha sido sanitizado. Antes de desplegar, debes editar los siguientes archivos:
+
+* **`gps_proxy_unified.php` y `backend.php`**:
+    * Configura el array `$ACCOUNTS` con las API Keys reales de tus sub-cuentas.
+    * Define la constante `GORATRACK_BASE_URL`.
+* **`dashboard.html`**:
+    * Actualiza el objeto `firebaseConfig` con tus credenciales de proyecto Firebase (API Key, AuthDomain, ProjectId).
+* **`generador_reporte_cron.php`**:
+    * Configura los datos SMTP para el envío automático de correos.
+
+### 3. Webhooks (Ingesta de Datos)
+El archivo `webhook_handler.php` actúa como el "oído" del sistema.
+1.  Coloca este archivo en una ruta pública accesible (HTTPS).
+2.  Configura tu plataforma GPS para enviar notificaciones POST a esta URL.
+3.  El script procesará el JSON entrante y lo escribirá en Firebase para alertar al monitorista.
 
 ---
+
+## 🔒 Nota de Seguridad
+
+Por motivos de confidencialidad operativa:
+*eliminé las credenciales de acceso a las plataformas de rastreo y servicios de correo de mi cliente.
+* Se han ofuscado las URLs de los endpoints de producción.
+* Este repositorio sirve como demostración de la arquitectura **SOAR** implementada.
+
+**Desarrollado por:**
 **William Velázquez Valenzuela**
 *Director de Tecnologías | Pixmedia Agency*
