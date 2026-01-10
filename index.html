@@ -3,164 +3,278 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>William Velázquez | Director de Tecnologías</title>
+    <title>C4 Tools Suite | William Velázquez</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         .hero-gradient { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
-        /* Uniformidad de tarjetas */
-        .project-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid #1e293b; height: 100%; display: flex; flex-direction: column; }
-        .project-card:hover { transform: translateY(-5px); border-color: #3b82f6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); }
-        .logo-pixmedia { width: 208px; height: 33px; object-fit: contain; }
+        /* Altura del 100% para uniformidad */
+        .glass-card { background: #161b2a; border: 1px solid #1e293b; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; display: flex; flex-direction: column; height: 100%; }
+        .glass-card:hover { transform: translateY(-5px); border-color: #3b82f6; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3); }
+        .logo-pixmedia { width: 180px; height: auto; object-fit: contain; }
         
-        /* Etiquetas de Categoría */
-        .badge { font-size: 0.65rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.05em; padding: 0.2rem 0.5rem; border-radius: 0.25rem; border: 1px solid; }
-        .badge-ai { background: rgba(59, 130, 246, 0.1); color: #60a5fa; border-color: rgba(59, 130, 246, 0.3); }
-        .badge-ops { background: rgba(16, 185, 129, 0.1); color: #34d399; border-color: rgba(16, 185, 129, 0.3); }
-        .badge-bi { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3); }
-        .badge-civic { background: rgba(239, 68, 68, 0.1); color: #f87171; border-color: rgba(239, 68, 68, 0.3); }
-        .badge-soar { background: rgba(168, 85, 247, 0.1); color: #c084fc; border-color: rgba(168, 85, 247, 0.3); }
+        /* Badges */
+        .badge { font-size: 0.65rem; padding: 2px 8px; border-radius: 99px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .badge-realtime { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-api { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.3); }
+        .badge-bi { background: rgba(16, 185, 129, 0.15); color: #6ee7b7; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+        /* Efecto Imagen */
+        .img-overlay { position: relative; aspect-ratio: 16/9; overflow: hidden; cursor: zoom-in; flex-shrink: 0; }
+        .img-overlay img { width: 100%; height: 100%; object-fit: cover; object-position: top; transition: transform 0.5s ease; }
+        .glass-card:hover .img-overlay img { transform: scale(1.05); }
+        .overlay-icon { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.6); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; }
+        .glass-card:hover .overlay-icon { opacity: 1; }
+        
+        /* Modal Zoom */
+        #imageModal { transition: opacity 0.3s ease; backdrop-filter: blur(5px); }
+        #imageModal.hidden { pointer-events: none; opacity: 0; }
     </style>
 </head>
-<body class="bg-[#0b0f1a] text-slate-300 font-sans">
+<body class="bg-[#0b0f1a] text-slate-300 font-sans min-h-screen flex flex-col">
 
-    <header class="hero-gradient py-20 px-4 border-b border-slate-800">
-        <div class="max-w-6xl mx-auto text-center">
-            <div class="flex justify-center mb-8">
-                <img src="https://pixmedia.b-cdn.net/pixmedialogoblanco.png" alt="Pixmedia" class="logo-pixmedia">
+    <header class="hero-gradient border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+            <img src="https://pixmedia.b-cdn.net/pixmedialogoblanco.png" alt="Pixmedia" class="logo-pixmedia">
+            <div class="text-xs font-bold text-slate-500 uppercase tracking-widest hidden md:block">
+                C4 Operational Intelligence Suite
             </div>
-            <h1 class="text-4xl md:text-5xl font-extrabold text-white mb-4 tracking-tight">William Velázquez Valenzuela</h1>
-            <p class="text-xl text-blue-400 font-medium mb-6">Director de Tecnologías | Desarrollo de Sistemas de Seguridad</p>
-            <p class="max-w-2xl mx-auto text-slate-400 leading-relaxed font-light">
-                Arquitectura de soluciones SOAR, infraestructura crítica y plataformas de vinculación ciudadana. Especialista en la integración de Hardware, Software e Inteligencia Artificial para la seguridad pública y privada.
-            </p>
         </div>
     </header>
 
-    <main class="py-20 px-4 max-w-7xl mx-auto">
-        <div class="text-center mb-16">
-            <h2 class="text-2xl font-bold text-white uppercase tracking-[0.2em]">Ecosistema de Proyectos</h2>
-            <div class="h-1 w-24 bg-blue-600 mx-auto mt-4"></div>
+    <div class="py-16 px-4 text-center bg-[#0f1420] border-b border-slate-900">
+        <h1 class="text-3xl md:text-5xl font-extrabold text-white mb-4 tracking-tight">Herramientas C4</h1>
+        <p class="text-blue-400 font-medium text-lg mb-6">Orquestación de Seguridad y Telemetría Avanzada</p>
+        <p class="max-w-3xl mx-auto text-slate-400 font-light leading-relaxed">
+            Suite de herramientas para Centros de Monitoreo. Integra APIs de rastreo satelital, genera cuentas espejo temporales, gestiona alertas en tiempo real (Firebase) y automatiza reportes de incidencias mediante Webhooks.
+        </p>
+    </div>
+
+    <main class="flex-grow px-4 py-16 max-w-7xl mx-auto w-full">
+        
+        <div class="mb-12">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center"><i class="fas fa-bell text-red-500 mr-3"></i> Gestión de Alertas (SOAR)</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 auto-rows-fr"> <article class="glass-card rounded-xl group" onclick="openModal('http://imgfz.com/i/P2GsKqo.png', 'Panel de Alertas en Tiempo Real')">
+                    <div class="img-overlay">
+                        <img src="http://imgfz.com/i/P2GsKqo.png" alt="Panel Realtime">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-realtime mb-2 inline-block">Firebase Live</span>
+                            <h3 class="text-lg font-bold text-white">Monitor de Alertas</h3>
+                            <p class="text-sm text-slate-400 mt-2">Recepción de eventos críticos (SOS, Geocercas) con alerta auditiva instantánea.</p>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/CJRKrMg.png', 'Historial de Gestión')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/CJRKrMg.png" alt="Historial">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-api mb-2 inline-block">Auditoría</span>
+                            <h3 class="text-lg font-bold text-white">Bitácora de Gestión</h3>
+                            <p class="text-sm text-slate-400 mt-2">Log detallado de alertas atendidas, clasificadas por motivo y operador.</p>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/NBw9sOq.png', 'Tarjeta de Evidencia WhatsApp')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/NBw9sOq.png" alt="Share Card">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-bi mb-2 inline-block">Evidencia Digital</span>
+                            <h3 class="text-lg font-bold text-white">Tarjeta Táctica</h3>
+                            <p class="text-sm text-slate-400 mt-2">Generación automática de resúmenes visuales para compartir incidencias vía WhatsApp.</p>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="glass-card rounded-xl group" onclick="openModal('http://imgfz.com/i/3Le2akH.png', 'Analítica de Incidentes')">
+                    <div class="img-overlay">
+                        <img src="http://imgfz.com/i/3Le2akH.png" alt="Gráficas">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-bi mb-2 inline-block">Analytics</span>
+                            <h3 class="text-lg font-bold text-white">Métricas de Riesgo</h3>
+                            <p class="text-sm text-slate-400 mt-2">Visualización estadística de tipos de alertas y motivos frecuentes.</p>
+                        </div>
+                    </div>
+                </article>
+            </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-7xl mx-auto auto-rows-fr">
-            
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group relative border-blue-900/50">
-                <div class="absolute top-0 right-0 p-2"><span class="flex h-3 w-3"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span><span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span></span></div>
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-blue-500 text-3xl"><i class="fas fa-network-wired"></i></div>
-                        <span class="badge badge-soar">SOAR / Middleware</span>
+        <div class="mb-12">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center"><i class="fas fa-network-wired text-blue-500 mr-3"></i> Interoperabilidad (Espejos)</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr">
+                
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/wX72QVa.png', 'Generador de Links Espejo')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/wX72QVa.png" alt="API Mirror">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-blue-400 transition">Herramientas C4 Suite</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Orquestación de seguridad avanzada. Integración de APIs de rastreo, gestión de alertas en tiempo real (Firebase) y generación de enlaces espejo on-demand.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/Herramientas-C4/" class="bg-slate-800 hover:bg-blue-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-blue-400">Ver Suite <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-red-500 text-3xl"><i class="fas fa-user-shield"></i></div>
-                        <span class="badge badge-civic">Civic Tech</span>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-api mb-2 inline-block">API Proxy</span>
+                            <h3 class="text-lg font-bold text-white">Generador On-Demand</h3>
+                            <p class="text-sm text-slate-400 mt-2">Interfaz para seleccionar unidades de múltiples clientes y crear enlaces temporales.</p>
+                        </div>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-red-400 transition">CoatzaSeguro C5</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Plataforma de vinculación ciudadana para el reporte anónimo. Incluye dashboard táctico, chat bidireccional y seguimiento por folio único.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/Coatza-Seguro/" class="bg-slate-800 hover:bg-red-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-red-400">Ver Plataforma <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
+                </article>
 
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-emerald-500 text-3xl"><i class="fas fa-mobile-screen-button"></i></div>
-                        <span class="badge badge-ops">Operations PWA</span>
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/O4kpKdh.png', 'Visor de Mapa Espejo')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/O4kpKdh.png" alt="Map View">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-emerald-400 transition">Suite Operativa Móvil</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Ecosistema de Web Apps para la digitalización de reportes en campo. Generación automática de tarjetas tácticas para WhatsApp y logs históricos.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/reportes-estado-de-fuerza/" class="bg-slate-800 hover:bg-emerald-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-emerald-400">Acceder a Suite <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-orange-500 text-3xl"><i class="fas fa-truck-fast"></i></div>
-                        <span class="badge badge-bi">Telemetry BI</span>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <span class="badge badge-realtime mb-2 inline-block">Leaflet JS</span>
+                            <h3 class="text-lg font-bold text-white">Visor Unificado</h3>
+                            <p class="text-sm text-slate-400 mt-2">Mapa interactivo que muestra las unidades compartidas en tiempo real sin login.</p>
+                        </div>
                     </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-orange-400 transition">GPC Intelligence</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Dashboard avanzado de telemetría para análisis de flotas pesadas. Monitoreo de rendimiento, combustible, ralentí y seguridad en ruta.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/GPC-reportes/" class="bg-slate-800 hover:bg-orange-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-orange-400">Ver Dashboard <i class="fas fa-arrow-right ml-2"></i></a>
+                </article>
             </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-blue-500 text-3xl"><i class="fas fa-robot"></i></div>
-                        <span class="badge badge-ai">AI Core</span>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-blue-400 transition">Reporteador ECC</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Sistema de gestión de evidencia digital potenciado por IA (Gemini). Redacción automática de informes ejecutivos y generación de PDFs legales.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/Reportes-ECC/" class="bg-slate-800 hover:bg-blue-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-blue-400">Ver Demo Técnica <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-purple-500 text-3xl"><i class="fas fa-industry"></i></div>
-                        <span class="badge badge-bi">Analytics</span>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-purple-400 transition">TQPM Intelligence</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Hub de reportes para Terminal Química Puerto México. Incluye Dashboards anuales interactivos y bitácoras de operación portuaria.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/TQPM/" class="bg-slate-800 hover:bg-purple-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-purple-400">Ver Reportes <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-cyan-500 text-3xl"><i class="fas fa-newspaper"></i></div>
-                        <span class="badge badge-civic">Comms</span>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-cyan-400 transition">Hub de Comunicaciones</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Central de distribución de comunicados oficiales, alertas de inteligencia vial y newsletters corporativos HTML.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/boletines/" class="bg-slate-800 hover:bg-cyan-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-cyan-400">Ver Boletines <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-emerald-500 text-3xl"><i class="fas fa-map-location-dot"></i></div>
-                        <span class="badge badge-ops">Logistics</span>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-emerald-400 transition">Braskem Logistics</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Visualización geoespacial de rutas críticas y análisis de riesgo en cadena de suministro petroquímica.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/Braskem/" class="bg-slate-800 hover:bg-emerald-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-emerald-400">Ver Mapa <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
-            <div class="project-card bg-[#161b2a] rounded-2xl overflow-hidden flex flex-col group">
-                <div class="p-8 flex-grow">
-                    <div class="flex justify-between items-start mb-6">
-                        <div class="text-pink-500 text-3xl"><i class="fas fa-chart-pie"></i></div>
-                        <span class="badge badge-bi">Quality</span>
-                    </div>
-                    <h3 class="text-xl font-bold text-white mb-3 group-hover:text-pink-400 transition">Mystery Shopper</h3>
-                    <p class="text-sm text-slate-400 leading-relaxed mb-6">Dashboard para auditoría de calidad de servicio. Visualización de KPIs y cumplimiento mediante gráficos dinámicos.</p>
-                </div>
-                <a href="https://willy100fuegos.github.io/los-conejos/" class="bg-slate-800 hover:bg-pink-900/40 text-white text-center py-4 font-bold transition border-t border-slate-700 hover:text-pink-400">Ver Métricas <i class="fas fa-arrow-right ml-2"></i></a>
-            </div>
-
         </div>
+
+        <div class="mb-12">
+            <h2 class="text-2xl font-bold text-white mb-6 flex items-center"><i class="fas fa-file-invoice text-emerald-500 mr-3"></i> Reportería Automatizada</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-fr">
+                
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/8KDEsR0.png', 'Configuración de Reportes')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/8KDEsR0.png" alt="Admin Reportes">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Panel de Excesos</h3>
+                            <p class="text-sm text-slate-400 mt-2">Configuración de reportes de velocidad con envío programado por correo.</p>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/6xs1TrO.png', 'Reporte Dinámico (Heatmap)')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/6xs1TrO.png" alt="Heatmap Output">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Output Dinámico (Heatmap)</h3>
+                            <p class="text-sm text-slate-400 mt-2">Reporte interactivo generado en servidor. Muestra puntos de calor de incidencias y trazado de rutas críticas.</p>
+                        </div>
+                    </div>
+                </article>
+
+                 <article class="glass-card rounded-xl group" onclick="openModal('https://imgfz.com/i/hlHQoTr.png', 'Bitácora de Movimientos')">
+                    <div class="img-overlay">
+                        <img src="https://imgfz.com/i/hlHQoTr.png" alt="Tiempos y Movimientos">
+                        <div class="overlay-icon"><i class="fas fa-search-plus text-white text-3xl"></i></div>
+                    </div>
+                    <div class="p-5 flex flex-col flex-grow">
+                        <div>
+                            <h3 class="text-lg font-bold text-white">Tiempos y Movimientos</h3>
+                            <p class="text-sm text-slate-400 mt-2">Análisis detallado de ruta con paradas, encendidos y kilometraje.</p>
+                        </div>
+                    </div>
+                </article>
+
+            </div>
+        </div>
+
     </main>
 
-    <footer class="py-12 border-t border-slate-800 bg-[#080c14] text-center">
-        <img src="https://pixmedia.b-cdn.net/pixmedialogoblanco.png" alt="Pixmedia" class="logo-pixmedia mx-auto mb-6 opacity-60">
-        <p class="text-slate-500 text-[10px] uppercase tracking-[0.3em] font-bold">Pixmedia Agency | Dirección de Tecnologías 2026</p>
+    <footer class="py-8 border-t border-slate-800 bg-[#080c14] text-center mt-auto">
+        <img src="https://pixmedia.b-cdn.net/pixmedialogoblanco.png" alt="Pixmedia" class="logo-pixmedia mx-auto mb-4 opacity-50 h-6">
+        <p class="text-slate-600 text-[10px] uppercase tracking-[0.2em] font-bold">Tecnología Propietaria | Desarrollo Privado</p>
     </footer>
 
+    <div id="imageModal" class="fixed inset-0 z-[100] bg-black/95 hidden flex items-center justify-center p-4" onclick="if(event.target===this) closeModal()">
+        <div class="relative w-full h-full max-w-7xl flex flex-col">
+            <div class="flex justify-between items-center text-white py-2 px-4 bg-slate-900 rounded-t-lg">
+                <h3 id="modalTitle" class="font-bold">Vista Previa</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white"><i class="fas fa-times text-2xl"></i></button>
+            </div>
+            <div id="zoomContainer" class="flex-grow bg-[#161b2a] relative overflow-hidden flex items-center justify-center cursor-zoom-in border border-slate-800">
+                <img id="modalImage" src="" class="max-w-full max-h-full transition-transform duration-200" style="transform-origin: center;">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const modal = document.getElementById('imageModal');
+        const img = document.getElementById('modalImage');
+        const container = document.getElementById('zoomContainer');
+        let isZoomed = false;
+
+        function openModal(src, title) {
+            img.src = src;
+            document.getElementById('modalTitle').innerText = title;
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            resetZoom();
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            document.body.style.overflow = 'auto';
+        }
+
+        function resetZoom() {
+            isZoomed = false;
+            img.style.transform = 'scale(1)';
+            container.classList.replace('cursor-grab', 'cursor-zoom-in');
+            img.onmousedown = null;
+        }
+
+        container.onclick = (e) => {
+            if (isZoomed) {
+                resetZoom();
+            } else {
+                isZoomed = true;
+                img.style.transform = 'scale(2.5)';
+                container.classList.replace('cursor-zoom-in', 'cursor-grab');
+                enableDrag();
+            }
+        };
+
+        function enableDrag() {
+            let isDragging = false, startX, startY, initialLeft, initialTop;
+            
+            container.onmousedown = (e) => {
+                e.preventDefault();
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                const style = window.getComputedStyle(img);
+                const matrix = new WebKitCSSMatrix(style.transform);
+                initialLeft = matrix.m41;
+                initialTop = matrix.m42;
+                container.classList.replace('cursor-grab', 'cursor-grabbing');
+            };
+
+            window.onmousemove = (e) => {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                img.style.transform = `scale(2.5) translate(${initialLeft + dx/2.5}px, ${initialTop + dy/2.5}px)`;
+            };
+
+            window.onmouseup = () => {
+                isDragging = false;
+                container.classList.replace('cursor-grabbing', 'cursor-grab');
+            };
+        }
+    </script>
 </body>
 </html>
