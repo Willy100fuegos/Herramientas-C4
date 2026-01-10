@@ -3,89 +3,100 @@
 > **Sistema de Gestión de Incidentes y Telemetría Unificada.**
 > *Middleware de integración para Centros de Monitoreo (C4) que centraliza alertas, reportería y cuentas espejo.*
 
----
-
-## 🎯 Objetivo del Sistema
-
-Esta plataforma actúa como una **capa de inteligencia (Middleware)** sobre la plataforma comercial de rastreo GPS (Goratrack). Su función es resolver las limitaciones nativas del proveedor, permitiendo:
-
-1.  **Interoperabilidad:** Crear enlaces espejo temporales ("Uber-like links") para clientes externos sin crear usuarios en la plataforma base.
-2.  **Alertamiento SOAR:** Centralizar alertas críticas (SOS, Geocercas) en un dashboard de tiempo real con aviso sonoro y visual.
-3.  **Reportería Forense:** Generar mapas de calor y análisis de velocidad que la plataforma nativa no ofrece.
+<p align="center">
+  <img src="https://pixmedia.b-cdn.net/pixmedialogoblanco.png" width="200" alt="Pixmedia Agency">
+</p>
 
 ---
 
-## 🔄 Flujo de Trabajo (Módulos)
+## 🎯 Visión General
 
-### 1. Panel de Gestión de Alertas (Real-Time)
-El monitorista recibe alertas instantáneas vía Webhook. El sistema utiliza **Firebase** para empujar la notificación visual y auditiva al navegador sin necesidad de recargar la página.
-![Panel Realtime](http://imgfz.com/i/P2GsKqo.png)
+**Herramientas C4** es una suite de orquestación (SOAR) diseñada para resolver las limitaciones de las plataformas comerciales de rastreo GPS. Actúa como un cerebro central que:
+1.  **Unifica:** Conecta múltiples cuentas maestras (Centurión, ETF, UIPSA) en una sola API.
+2.  **Reacciona:** Detecta eventos críticos (SOS, Geocercas) y alerta en tiempo real vía Firebase.
+3.  **Comparte:** Genera enlaces de rastreo temporal ("Espejos") para clientes externos sin exponer credenciales.
 
-Desde aquí, se gestiona el incidente y se genera una **Tarjeta Táctica** para WhatsApp:
-![Share Card](https://imgfz.com/i/NBw9sOq.png)
 
-### 2. Generador de Cuentas Espejo (On-Demand)
-A través de una API Proxy Unificada (`gps_proxy_unified.php`), el sistema consulta múltiples cuentas maestras (UIPSA, ETF, Centurión), lista todas las unidades disponibles y permite generar un link temporal de visualización.
-![Admin Espejo](https://imgfz.com/i/wX72QVa.png)
-
-El cliente final recibe un enlace único que muestra solo las unidades seleccionadas en un mapa limpio:
-![Mapa Espejo](https://imgfz.com/i/O4kpKdh.png)
-
-### 3. Inteligencia Vial y Reportes
-Generación de reportes de excesos de velocidad y tiempos/movimientos. El backend procesa miles de puntos GPS (`api_generar_manual.php`) para construir mapas de calor de incidencias.
-![Heatmap](https://imgfz.com/i/6xs1TrO.png)
 
 ---
 
-## 🛠️ Arquitectura Técnica
+## 📸 Showcase de Módulos
 
-El sistema utiliza un enfoque de **Microservicios Híbridos**:
+### 1. Gestión de Alertas (SOAR)
+El corazón operativo del C4. Un panel diseñado para la reacción inmediata ante incidentes.
 
-| Componente | Tecnología | Función |
-| :--- | :--- | :--- |
-| **Backend Core** | **PHP 8.2** | Proxy de APIs, generación de reportes y lógica de negocio. |
-| **Real-Time DB** | **Firebase Firestore** | Sincronización de alertas en vivo y estado del dashboard. |
-| **Map Engine** | **Leaflet JS** | Renderizado de mapas interactivos ligeros (OpenStreetMap). |
-| **Ingesta** | **Webhooks** | `webhook_handler.php` recibe eventos RAW del proveedor GPS. |
-| **Visualización** | **Chart.js** | Gráficos de tendencias y matrices de calor. |
+| **Monitor de Alertas** | **Bitácora de Gestión** | **Tarjeta Táctica** |
+|:---:|:---:|:---:|
+| <img src="http://imgfz.com/i/P2GsKqo.png" width="250"> | <img src="https://imgfz.com/i/CJRKrMg.png" width="250"> | <img src="https://imgfz.com/i/NBw9sOq.png" width="250"> |
+| **Firebase Live:** Recepción de eventos críticos (SOS) con alerta auditiva instantánea sin recargar la página. | **Auditoría:** Log detallado de todas las alertas atendidas, clasificadas por motivo y operador. | **Evidencia Digital:** Generación automática de resúmenes visuales listos para compartir por WhatsApp. |
 
----
+### 2. Interoperabilidad (Cuentas Espejo)
+Sistema para compartir ubicación en tiempo real de forma segura y temporal.
 
-## 👨‍💻 Guía de Despliegue (Para Desarrolladores)
+| **Generador On-Demand** | **Visor Unificado (Cliente)** |
+|:---:|:---:|
+| <img src="https://imgfz.com/i/wX72QVa.png" width="400"> | <img src="https://imgfz.com/i/O4kpKdh.png" width="400"> |
+| **API Proxy:** Interfaz para seleccionar unidades de múltiples clientes y crear enlaces con vigencia programada. | **Leaflet JS:** Mapa interactivo limpio que recibe el cliente final. No requiere usuario ni contraseña. |
 
-Esta suite requiere configuración tanto en servidor web (PHP) como en servicios cloud (Firebase/Google).
+### 3. Reportería Inteligente
+Motores de análisis de datos para la prevención de riesgos.
 
-### 1. Requisitos del Sistema
-* Servidor LAMP (Linux, Apache, MySQL, PHP 8+).
-* Extensiones PHP: `curl`, `json`, `mbstring`.
-* Cuenta de Firebase (Para el módulo de tiempo real).
-* API Key del proveedor de rastreo (Goratrack/Navixy/Wialon).
-
-### 2. Configuración de Archivos Clave
-El código ha sido sanitizado. Antes de desplegar, debes editar los siguientes archivos:
-
-* **`gps_proxy_unified.php` y `backend.php`**:
-    * Configura el array `$ACCOUNTS` con las API Keys reales de tus sub-cuentas.
-    * Define la constante `GORATRACK_BASE_URL`.
-* **`dashboard.html`**:
-    * Actualiza el objeto `firebaseConfig` con tus credenciales de proyecto Firebase (API Key, AuthDomain, ProjectId).
-* **`generador_reporte_cron.php`**:
-    * Configura los datos SMTP para el envío automático de correos.
-
-### 3. Webhooks (Ingesta de Datos)
-El archivo `webhook_handler.php` actúa como el "oído" del sistema.
-1.  Coloca este archivo en una ruta pública accesible (HTTPS).
-2.  Configura tu plataforma GPS para enviar notificaciones POST a esta URL.
-3.  El script procesará el JSON entrante y lo escribirá en Firebase para alertar al monitorista.
+| **Output Dinámico (Heatmap)** | **Configuración de Reportes** | **Tiempos y Movimientos** |
+|:---:|:---:|:---:|
+| <img src="https://imgfz.com/i/6xs1TrO.png" width="250"> | <img src="https://imgfz.com/i/8KDEsR0.png" width="250"> | <img src="https://imgfz.com/i/hlHQoTr.png" width="250"> |
+| Reporte interactivo con mapas de calor de incidencias y trazado de rutas críticas. | Panel para programar envíos automáticos de reportes de velocidad por correo. | Análisis detallado de ruta con paradas, encendidos y kilometraje. |
 
 ---
 
-## 🔒 Nota de Seguridad
+## 📂 Anatomía del Sistema (Diccionario de Archivos)
 
-Por motivos de confidencialidad operativa:
-*eliminé las credenciales de acceso a las plataformas de rastreo y servicios de correo de mi cliente.
-* Se han ofuscado las URLs de los endpoints de producción.
-* Este repositorio sirve como demostración de la arquitectura **SOAR** implementada.
+El repositorio está estructurado en 12 componentes clave divididos en 3 capas lógicas:
+
+### 🔴 Capa de Tiempo Real & Visualización
+* **`dashboard.html`**: El "Cerebro". Interfaz principal del monitorista conectada a **Firebase**. Escucha cambios en la base de datos para disparar alertas visuales y sonoras.
+* **`dashboard_gps_unified.html`**: Mapa maestro que consume la API unificada para mostrar **todas** las unidades de todas las cuentas en una sola pantalla.
+* **`admin.html`**: Panel administrativo para la selección de unidades y generación de tokens para las cuentas espejo.
+* **`mirror.php`**: El visor público ("Front-facing"). Es la página que ven los clientes externos cuando reciben un enlace espejo. Valida el token y muestra el mapa.
+
+### 🔵 Capa de Backend & Integración (Middleware)
+* **`gps_proxy_unified.php`**: El "Traductor". Recibe peticiones del frontend y consulta las APIs de los diferentes proveedores (Centurión, UIPSA, etc.), devolviendo un formato JSON estandarizado.
+* **`webhook_handler.php`**: El "Oído". Script que recibe los datos crudos (POST) desde la plataforma de rastreo cuando ocurre una alerta y los inyecta en Firebase.
+* **`backend.php`**: Motor lógico para el sistema de espejos. Se encarga de guardar los tokens generados y validar su caducidad.
+
+### 🟢 Capa de Reportería & Automatización
+* **`api_generar_manual.php`**: Motor de cálculo pesado. Procesa miles de puntos GPS para detectar excesos de velocidad y generar los JSONs para los mapas de calor.
+* **`panel_gestion_ondemand.php`**: Interfaz de usuario (UI) para solicitar reportes manuales de rangos de fecha específicos.
+* **`panel_reportes.php`**: UI para configurar qué unidades y a qué correos se enviarán los reportes automáticos semanales.
+* **`generador_reporte_cron.php`**: Script diseñado para ejecutarse automáticamente (Cron Job). Verifica la configuración y dispara los correos programados.
+* **`reporte_programado.php`**: Plantilla lógica que estructura el contenido HTML del correo electrónico de reporte.
+
+---
+
+## 👨‍💻 Guía de Despliegue (Deploy)
+
+### 1. Requisitos
+* Servidor Web (Apache/Nginx) con PHP 8.0+.
+* Proyecto en **Firebase Console** (Firestore Database).
+* Acceso a Cron Jobs (para reportes automáticos).
+
+### 2. Configuración
+Antes de subir a producción, edita los siguientes archivos (ya sanitizados en el repo):
+1.  **`gps_proxy_unified.php`**: Coloca tus API Keys reales de Goratrack/Navixy.
+2.  **`dashboard.html`**: Actualiza el objeto `firebaseConfig` con tus credenciales.
+3.  **`generador_reporte_cron.php`**: Configura las credenciales SMTP para el envío de correos.
+
+### 3. Webhooks
+Apunta los Webhooks de tu proveedor GPS a:
+`https://tudominio.com/herramientas-c4/webhook_handler.php`
+
+---
+
+## 🔒 Seguridad
+
+Este software ha sido diseñado bajo principios de **Security by Design**:
+* Las credenciales de las cuentas maestras nunca se exponen al frontend (se quedan en el proxy PHP).
+* Los enlaces espejo son de un solo uso o caducidad programada.
+* El código fuente público ha sido sanitizado para remover llaves de producción.
 
 **Desarrollado por:**
 **William Velázquez Valenzuela**
